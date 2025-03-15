@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 from enum import Enum
 from random import sample
+import random
 import numpy as np
 import cv2
 
@@ -123,7 +124,7 @@ def _rotate_image(cv_image, _rotation_angle):
     return cv_image
 
 
-INIT_TAIL_SIZE = 4
+INIT_TAIL_SIZE = 2
 class Snake:
     def __init__(self, x: int = 0, y: int = 0, health=10, colour=Colour.RED):
         self.head = Point(x, y)
@@ -160,7 +161,7 @@ class Snake:
     def update(self, decay=False):
         new_head = self.head.copy(self.direction.x(), self.direction.y())
 
-        self.tail.append(self.head)  # OK direction? or do I need to add this to the top?
+        self.tail.append(self.head)
         self.head = new_head
 
         if decay:
@@ -179,8 +180,8 @@ class Snake:
         """
 
     def apply_direction(self, action=['left', 'right', 'stay']):
-        if action == 'stay':
-            return
+        # if action == 'stay':
+        #     return
         if action == 'left':
             self.direction = self.direction.turn_left()
         elif action == 'right':
@@ -193,7 +194,7 @@ class Env:
         self.num_snakes = num_snakes
         self.num_teams = num_teams
         self.time_steps = 0
-        self.decay_rate = 0
+        self.decay_rate = 1
 
         self.reset()
 
@@ -201,7 +202,7 @@ class Env:
         self.step = 0
         grid_size = self.gs
 
-        self.snakes = [Snake(x=i+grid_size//2, y=i+grid_size//2) for i in range(self.num_snakes)]
+        self.snakes = [Snake(random.randint(0, self.gs-1), random.randint(0, self.gs-1)) for _ in range(self.num_snakes)]
         if self.num_teams == 2:
             #TODO: Implement team logic
             for i, snake in enumerate(self.snakes):

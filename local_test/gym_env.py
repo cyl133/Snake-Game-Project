@@ -5,13 +5,13 @@ import cv2
 import itertools
 
 
-MAX_STEPS = 50
+MAX_STEPS = 500
 MAX_HP = 100
 
 reward_map = {
-    SnakeState.OK: -0.001,
-    SnakeState.ATE: 1,
-    SnakeState.DED: -1,
+    SnakeState.OK: -2,
+    SnakeState.ATE: 2,
+    SnakeState.DED: -5,
     SnakeState.WON: 1
 }
 
@@ -31,7 +31,7 @@ class SnakeGameEnv(gym.Env):
 
         self.action_space = gym.spaces.Discrete(len(self.action_map.keys()))
 
-        n = 3 * self.num_snakes  # 3 features per snake, add more if needed
+        n = 4 * self.num_snakes  # 4 features per snake, add more if needed
         self.observation_space = gym.spaces.Dict(
             {
                 'image': gym.spaces.Box(
@@ -44,7 +44,7 @@ class SnakeGameEnv(gym.Env):
         ) 
 
     def _get_obs(self):
-        snakes = [(snake.hp, snake.direction.to_int(), snake.colour.value) for snake in self.env.snakes]
+        snakes = [(snake.hp, snake.direction.to_int(), snake.colour.value, (snake.head.x, snake.head.y)) for snake in self.env.snakes]
         snakes = list(itertools.chain(*snakes)) + [0, 0, 0] * (self.num_snakes - len(snakes))
         return {
             'image': cv2.resize(self.env.to_image(), (640, 640), interpolation=cv2.INTER_NEAREST),
@@ -70,7 +70,7 @@ class SnakeGameEnv(gym.Env):
 
         reward = reward_map[snake_condition]
 
-        is_terminal = snake_condition in [SnakeState.DED, SnakeState.WON] or self.env.time_steps > MAX_STEPS
+        is_terminal = snake_condition in [SnakeState.DED, SnakeState.WON] #or self.env.time_steps > MAX_STEPS
         truncated = self.env.time_steps > MAX_STEPS
 
         return self._get_obs(), reward, is_terminal, truncated, self._get_info()
@@ -79,7 +79,7 @@ class SnakeGameEnv(gym.Env):
         im = self.env.to_image(gradation=True)
         if self.render_mode == 'human':
             cv2.imshow('Snake Game', cv2.resize(im, (640, 640), interpolation=cv2.INTER_NEAREST))
-            cv2.waitKey(500)
+            cv2.waitKey(100)
         elif self.render_mode == 'rgb_array':
             return cv2.resize(im, (640, 640), interpolation=cv2.INTER_NEAREST)
         elif self.render_mode == 'ansi':

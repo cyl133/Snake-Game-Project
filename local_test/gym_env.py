@@ -16,7 +16,7 @@ reward_map = {
 }
 
 class SnakeGameEnv(gym.Env):
-    def __init__(self, gs=10, num_fruits=1, num_snakes=1, num_teams=1, render_mode='human'):
+    def __init__(self, gs=10, num_fruits=10, num_snakes=1, num_teams=1, render_mode='human'):
         super(SnakeGameEnv, self).__init__()
         self.env = Env(gs, num_fruits, num_snakes, num_teams)
         self.action_map = {

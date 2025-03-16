@@ -4,7 +4,7 @@ from stable_baselines3 import PPO
 
 
 # Load the trained model
-model = PPO.load("ppo_snake")
+model = PPO.load("models/ppo_snake.zip")
 
 # Create a new environment instance for evaluation
 env = SnakeGameEnv(num_snakes=1, num_teams=1, render_mode='human')

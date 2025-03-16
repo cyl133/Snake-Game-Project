@@ -31,7 +31,7 @@ class SnakeGameEnv(gym.Env):
 
         self.action_space = gym.spaces.Discrete(len(self.action_map.keys()))
 
-        n = 4 * self.num_snakes  # 4 features per snake, add more if needed
+        n = 5 * self.num_snakes  # 4 features per snake, add more if needed
         self.observation_space = gym.spaces.Dict(
             {
                 'image': gym.spaces.Box(
@@ -44,7 +44,7 @@ class SnakeGameEnv(gym.Env):
         ) 
 
     def _get_obs(self):
-        snakes = [(snake.hp, snake.direction.to_int(), snake.colour.value, (snake.head.x, snake.head.y)) for snake in self.env.snakes]
+        snakes = [(snake.hp, snake.direction.to_int(), snake.colour.value, snake.head.x, snake.head.y) for snake in self.env.snakes]
         snakes = list(itertools.chain(*snakes)) + [0, 0, 0] * (self.num_snakes - len(snakes))
         return {
             'image': cv2.resize(self.env.to_image(), (640, 640), interpolation=cv2.INTER_NEAREST),

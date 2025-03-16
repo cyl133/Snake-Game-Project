@@ -64,8 +64,8 @@ from gym_env import SnakeGameEnv
 
 env = SnakeGameEnv(num_snakes=1, num_teams=1)
 
-model = PPO('MultiInputPolicy', env, verbose=True, device='cuda', n_steps=64)
+model = PPO('MultiInputPolicy', env, verbose=True, device='cuda', n_steps=4)
 # model = PPO.load("ppo_snake", env=env, device="cuda")
 
-model.learn(100, progress_bar=1)
+model.learn(8, progress_bar=1)
 model.save('ppo_snake')

@@ -39,7 +39,7 @@ class SnakeGameEnv(gym.Env):
                     dtype=np.uint8),
                 'vector': gym.spaces.Box(
                     low=0, high=255, shape=(n,),
-                    dtype=np.uint8)
+                    dtype=np.int16)
             }
         ) 
 

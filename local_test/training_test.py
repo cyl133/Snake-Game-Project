@@ -67,5 +67,5 @@ env = SnakeGameEnv(num_snakes=1, num_teams=1)
 model = PPO('MultiInputPolicy', env, verbose=True, device='cuda')
 # model = PPO.load("ppo_snake", env=env, device="cuda")
 
-model.learn(1000, progress_bar=False)
+model.learn(1000, progress_bar=True)
 model.save('ppo_snake')

@@ -276,7 +276,7 @@ class Env:
         
         self.set_fruits()
         self.time_steps += 1
-        return snake_states[0]
+        return snake_states[0], self.snakes[0].hp, self.snakes[0].tail_size
 
     @property
     def fruit_loc(self):

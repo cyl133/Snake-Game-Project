@@ -14,7 +14,7 @@ log_dir = "logs"
 
 env = SnakeGameEnv(num_snakes=1, num_teams=1)
 
-model = PPO('MultiInputPolicy', env, verbose=True, device='cuda', tensorboard_log=log_dir, n_steps=128)
+model = PPO('MultiInputPolicy', env, verbose=True, device='cuda', tensorboard_log=log_dir, n_steps=1024)
 # model = PPO.load("ppo_snake", env=env, device="cuda", tensorboard_log=log_dir)
 
 

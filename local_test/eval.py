@@ -10,6 +10,6 @@ model = PPO.load("models/ppo_snake2.0.zip")
 env = SnakeGameEnv(num_snakes=1, num_teams=1, render_mode='human')
 
 # Evaluate the model
-mean_reward, std_reward = evaluate_policy(model, env, n_eval_episodes=10, render=True)
+mean_reward, std_reward = evaluate_policy(model, env, n_eval_episodes=50, render=True, return_episode_rewards=True)
 
 print(f"Mean reward: {mean_reward:.2f} +/- {std_reward:.2f}")

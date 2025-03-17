@@ -9,7 +9,7 @@ MAX_STEPS = 50
 MAX_HP = 50
 
 reward_map = {
-    SnakeState.OK: -2,
+    SnakeState.OK: 0,
     SnakeState.ATE: 5,
     SnakeState.DED: -10,
     SnakeState.WON: 1

@@ -2,7 +2,7 @@ import cv2
 import numpy as np
 from gym_env import SnakeGameEnv
 
-env = SnakeGameEnv(num_snakes=2, num_teams=2)
+env = SnakeGameEnv(num_snakes=1, num_teams=1)
 
 obs = env.reset()
 
@@ -17,7 +17,7 @@ while not done:
     # Apply the action
     obs, reward, done, truncated, info = env.step(action)
     
-    # print(f"New observation: {obs['vector']}")
+    print(f"New observation: {obs['vector']}")
     print(f"Reward: {reward}")
     print(f"Done: {done}")
 

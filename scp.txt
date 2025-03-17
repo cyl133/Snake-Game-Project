@@ -1,1 +1,0 @@
-scp e0905349@xlogin.comp.nus.edu.sg:/home//e/e0905349/Snake-Game-Project/local_test/ppo_snake.zip "C:\Users\lukec\3D Objects\CS\CS4246\Project\local_test\models"

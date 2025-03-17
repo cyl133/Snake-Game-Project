@@ -10,7 +10,7 @@ MAX_HP = 50
 
 reward_map = {
     SnakeState.OK: -2,
-    SnakeState.ATE: 2,
+    SnakeState.ATE: 5,
     SnakeState.DED: -10,
     SnakeState.WON: 1
 }
@@ -68,11 +68,7 @@ class SnakeGameEnv(gym.Env):
 
         snake_condition = self.env.update([self.action_map[a] for a in actions])
 
-        if snake_condition == SnakeState.OK or snake_condition == SnakeState.ATE:
-            reward = self.env.snakes[0].hp
-        
-        elif snake_condition == SnakeState.DED:
-            reward = -10
+        reward = reward_map[snake_condition] / 100
 
         is_terminal = snake_condition in [SnakeState.DED, SnakeState.WON] #or self.env.time_steps > MAX_STEPS
         truncated = self.env.time_steps > MAX_STEPS
@@ -83,7 +79,7 @@ class SnakeGameEnv(gym.Env):
         im = self.env.to_image(gradation=True)
         if self.render_mode == 'human':
             cv2.imshow('Snake Game', cv2.resize(im, (640, 640), interpolation=cv2.INTER_NEAREST))
-            cv2.waitKey(100)
+            cv2.waitKey(500)
         elif self.render_mode == 'rgb_array':
             return cv2.resize(im, (640, 640), interpolation=cv2.INTER_NEAREST)
         elif self.render_mode == 'ansi':

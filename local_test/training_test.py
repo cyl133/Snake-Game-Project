@@ -18,6 +18,6 @@ env = SnakeGameEnv(num_snakes=1, num_teams=1)
 model = PPO.load("ppo_snake", env=env, device="cuda", tensorboard_log=log_dir)
 
 
-for i in range(50):
-    model.learn(10000, progress_bar=True, tb_log_name="PPO")
+for i in range(5):
+    model.learn(100000, progress_bar=True, tb_log_name="PPO", reset_num_timesteps=False)
     model.save('ppo_snake')

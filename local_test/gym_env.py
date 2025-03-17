@@ -6,7 +6,7 @@ import itertools
 
 
 MAX_STEPS = 50
-MAX_HP = 50
+INIT_HP = 10
 
 reward_map = {
     SnakeState.OK: 0,
@@ -18,7 +18,7 @@ reward_map = {
 class SnakeGameEnv(gym.Env):
     def __init__(self, gs=10, num_fruits=10, num_snakes=1, num_teams=1, render_mode='human'):
         super(SnakeGameEnv, self).__init__()
-        self.env = Env(gs, num_fruits, num_snakes, num_teams)
+        self.env = Env(gs, num_fruits, num_snakes, num_teams, init_hp=INIT_HP)
         self.action_map = {
             0: 'stay',
             1: 'left',
@@ -68,7 +68,7 @@ class SnakeGameEnv(gym.Env):
 
         snake_condition, hp, tail_size = self.env.update([self.action_map[a] for a in actions])
 
-        reward = (reward_map[snake_condition] + max((hp / tail_size), 10)) / 100
+        reward = (reward_map[snake_condition] + min(((hp)/tail_size), 10)) / 100
 
         is_terminal = snake_condition in [SnakeState.DED, SnakeState.WON] #or self.env.time_steps > MAX_STEPS
         truncated = self.env.time_steps > MAX_STEPS

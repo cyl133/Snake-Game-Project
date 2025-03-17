@@ -188,13 +188,14 @@ class Snake:
             self.direction = self.direction.turn_right()
 
 class Env:
-    def __init__(self, grid_size=10, num_fruits=10, num_snakes=1, num_teams=1):
+    def __init__(self, grid_size=10, num_fruits=10, num_snakes=1, num_teams=1, init_hp=10):
         self.gs = grid_size
         self.num_fruits = num_fruits
         self.num_snakes = num_snakes
         self.num_teams = num_teams
         self.time_steps = 0
         self.decay_rate = 1
+        self.init_hp = init_hp
 
         self.reset()
 
@@ -202,7 +203,7 @@ class Env:
         self.step = 0
         grid_size = self.gs
 
-        self.snakes = [Snake(random.randint(0, self.gs-1), random.randint(0, self.gs-1)) for _ in range(self.num_snakes)]
+        self.snakes = [Snake(random.randint(0, self.gs-1), random.randint(0, self.gs-1), health=self.init_hp) for _ in range(self.num_snakes)]
         if self.num_teams == 2:
             #TODO: Implement team logic
             for i, snake in enumerate(self.snakes):

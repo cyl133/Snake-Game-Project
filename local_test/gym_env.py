@@ -5,13 +5,13 @@ import cv2
 import itertools
 
 
-MAX_STEPS = 500
-MAX_HP = 100
+MAX_STEPS = 50
+MAX_HP = 50
 
 reward_map = {
     SnakeState.OK: -2,
     SnakeState.ATE: 2,
-    SnakeState.DED: -5,
+    SnakeState.DED: -10,
     SnakeState.WON: 1
 }
 
@@ -68,7 +68,11 @@ class SnakeGameEnv(gym.Env):
 
         snake_condition = self.env.update([self.action_map[a] for a in actions])
 
-        reward = reward_map[snake_condition]
+        if snake_condition == SnakeState.OK or snake_condition == SnakeState.ATE:
+            reward = self.env.snakes[0].hp
+        
+        elif snake_condition == SnakeState.DED:
+            reward = -10
 
         is_terminal = snake_condition in [SnakeState.DED, SnakeState.WON] #or self.env.time_steps > MAX_STEPS
         truncated = self.env.time_steps > MAX_STEPS

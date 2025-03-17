@@ -254,7 +254,7 @@ class Env:
                 snake_condition = SnakeState.ATE
             
             snake.shed()
-            if not self._bounds_check(snake.head) or snake.self_collision():
+            if not self._bounds_check(snake.head) or snake.self_collision() or snake.hp <= 0:
                 snake_condition = SnakeState.DED
 
             snake_states.append(snake_condition)

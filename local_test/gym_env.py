@@ -68,7 +68,7 @@ class SnakeGameEnv(gym.Env):
 
         snake_condition, hp, tail_size = self.env.update([self.action_map[a] for a in actions])
 
-        reward = reward_map[snake_condition]  * 10
+        reward = reward_map[snake_condition]  / 100
 
         is_terminal = snake_condition in [SnakeState.DED, SnakeState.WON] #or self.env.time_steps > MAX_STEPS
         truncated = self.env.time_steps > MAX_STEPS

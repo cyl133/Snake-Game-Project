@@ -124,7 +124,7 @@ def _rotate_image(cv_image, _rotation_angle):
     return cv_image
 
 
-INIT_TAIL_SIZE = 2
+INIT_TAIL_SIZE = 10
 class Snake:
     def __init__(self, x: int = 0, y: int = 0, health=10, colour=Colour.RED):
         self.head = Point(x, y)

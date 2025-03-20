@@ -4,6 +4,12 @@ from stable_baselines3 import PPO
 import torch
 
 
+action_map = {
+    0: 'stay',
+    1: 'left',
+    2: 'right'
+}
+
 # Load the trained model
 model = PPO.load("models/ppo_snake3.1-1mil.zip")
 
@@ -26,13 +32,14 @@ for _ in range(num_episodes):
         with torch.no_grad():
             tensor_obs, _ = model.policy.obs_to_tensor(obs)
             action_dist = model.policy.get_distribution(tensor_obs)
-            action_probs = torch.exp(action_dist.distribution.logits).round(decimals=3)
-            all_action_probs.append(action_probs.cpu().numpy())
+            action_probs = torch.exp(action_dist.distribution.logits)[0].tolist()
+            all_action_probs.append(action_probs)
 
-        print(f"Action Dist: {action_probs}")
+        paired_probs = [(action_map[i], round(prob, ndigits=3)) for i, prob in enumerate(action_probs)]
+        print(f"Action Dist: {paired_probs}")
         env.render()
         action, _ = model.predict(obs, deterministic=False)
-        print(f"Action: {action}")
+        print(f"Action: {action_map[int(action)]}")
         obs, reward, done,_, _ = env.step(int(action))
 
 

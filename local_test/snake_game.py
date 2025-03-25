@@ -124,12 +124,11 @@ def _rotate_image(cv_image, _rotation_angle):
     return cv_image
 
 
-INIT_TAIL_SIZE = 10
 class Snake:
-    def __init__(self, x: int = 0, y: int = 0, health=10, colour=Colour.RED):
+    def __init__(self, x: int = 0, y: int = 0, health=10, colour=Colour.RED, tail_size=2):
         self.head = Point(x, y)
         self.tail = []
-        self.tail_size = INIT_TAIL_SIZE
+        self.tail_size = tail_size
         self.direction = Direction.UP  # Need to add validation later
         self.dir_idx = 0
         self.hp = health
@@ -188,7 +187,7 @@ class Snake:
             self.direction = self.direction.turn_right()
 
 class Env:
-    def __init__(self, grid_size=10, num_fruits=10, num_snakes=1, num_teams=1, init_hp=10):
+    def __init__(self, grid_size=10, num_fruits=10, num_snakes=1, num_teams=1, init_hp=10, init_tail_size=2):
         self.gs = grid_size
         self.num_fruits = num_fruits
         self.num_snakes = num_snakes
@@ -196,6 +195,7 @@ class Env:
         self.time_steps = 0
         self.decay_rate = 1
         self.init_hp = init_hp
+        self.init_tail_size = init_tail_size
 
         self.reset()
 
@@ -203,7 +203,7 @@ class Env:
         self.step = 0
         grid_size = self.gs
 
-        self.snakes = [Snake(random.randint(0, self.gs-1), random.randint(0, self.gs-1), health=self.init_hp) for _ in range(self.num_snakes)]
+        self.snakes = [Snake(random.randint(0, self.gs-1), random.randint(0, self.gs-1), health=self.init_hp, tail_size=self.init_tail_size) for _ in range(self.num_snakes)]
         if self.num_teams == 2:
             #TODO: Implement team logic
             for i, snake in enumerate(self.snakes):

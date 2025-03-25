@@ -9,19 +9,19 @@ MAX_STEPS = 50
 
 # Initial game settings
 INIT_HP = 10
-INIT_TAIL_SIZE = 20
+INIT_TAIL_SIZE = 10
 MAX_FRUITS = 10
 
 # Rewards
 reward_map = {
-    SnakeState.OK: -0.5,
+    SnakeState.OK: 0,
     SnakeState.ATE: 5,
     SnakeState.DED: -10,
     SnakeState.WON: 1
 }
 
 class SnakeGameEnv(gym.Env):
-    def __init__(self, gs, num_snakes=1, num_teams=1, render_mode='human'):
+    def __init__(self, gs=10, num_snakes=1, num_teams=1, render_mode='human'):
         super(SnakeGameEnv, self).__init__()
         self.env = Env(gs, num_fruits=MAX_FRUITS, num_snakes=num_snakes, num_teams=num_teams, init_hp=INIT_HP, init_tail_size=INIT_TAIL_SIZE)
         self.action_map = {
@@ -33,6 +33,7 @@ class SnakeGameEnv(gym.Env):
         self.numteams = num_teams
         self.scale = 64
         self.render_mode = render_mode
+        self.gs = gs
 
         self.action_space = gym.spaces.Discrete(len(self.action_map.keys()))
 
@@ -40,7 +41,7 @@ class SnakeGameEnv(gym.Env):
         self.observation_space = gym.spaces.Dict(
             {
                 'image': gym.spaces.Box(
-                    low=0, high=255, shape=(self.env.gs*self.scale, self.env.gs*self.scale, 3),
+                    low=0, high=255, shape=(self.gs*self.scale, self.gs*self.scale, 3),
                     dtype=np.uint8),
                 'vector': gym.spaces.Box(
                     low=0, high=100, shape=(n,),
@@ -52,7 +53,7 @@ class SnakeGameEnv(gym.Env):
         snakes = [(snake.hp, snake.direction.to_int(), snake.colour.value, snake.head.x, snake.head.y) for snake in self.env.snakes]
         snakes = list(itertools.chain(*snakes)) + [0, 0, 0] * (self.num_snakes - len(snakes))
         return {
-            'image': cv2.resize(self.env.to_image(), (640, 640), interpolation=cv2.INTER_NEAREST),
+            'image': cv2.resize(self.env.to_image(), (self.gs*self.scale, self.gs*self.scale), interpolation=cv2.INTER_NEAREST),
             # 'image': np.expand_dims(self.env.to_image().astype('float32'), -1),
             'vector': snakes
         }
@@ -76,7 +77,7 @@ class SnakeGameEnv(gym.Env):
 
         reward = reward_map[snake_condition]  / 100
 
-        is_terminal = snake_condition in [SnakeState.DED, SnakeState.WON] #or self.env.time_steps > MAX_STEPS
+        is_terminal = snake_condition in [SnakeState.DED, SnakeState.WON] 
         truncated = self.env.time_steps > MAX_STEPS
 
         return self._get_obs(), reward, is_terminal, truncated, self._get_info()

@@ -11,7 +11,7 @@ action_map = {
 }
 
 # Load the trained model
-model = PPO.load("models/ppo_snake3.13-1mil.zip")
+model = PPO.load("models/ppo_snake3.13.zip")
 
 # Create a new environment instance for evaluation
 env = SnakeGameEnv(num_snakes=1, num_teams=1, render_mode='human')

@@ -15,9 +15,9 @@ MAX_FRUITS = 10
 # Rewards
 reward_map = {
     SnakeState.OK: 0,
-    SnakeState.ATE: 5,
-    SnakeState.DED: -10,
-    SnakeState.WON: 1
+    SnakeState.ATE: 0,  # No immediate reward for eating
+    SnakeState.DED: 0,  # No immediate penalty for dying
+    SnakeState.WON: 0   # No immediate reward for winning
 }
 
 class SnakeGameEnv(gym.Env):
@@ -34,6 +34,7 @@ class SnakeGameEnv(gym.Env):
         self.scale = 64
         self.render_mode = render_mode
         self.gs = gs
+        self.initial_tail_size = INIT_TAIL_SIZE
 
         self.action_space = gym.spaces.Discrete(len(self.action_map.keys()))
 
@@ -65,6 +66,7 @@ class SnakeGameEnv(gym.Env):
         super().reset(seed=seed)
 
         self.env.reset()
+        self.initial_tail_size = INIT_TAIL_SIZE
         return self._get_obs(), self._get_info()
     
     def step(self, action):
@@ -75,11 +77,14 @@ class SnakeGameEnv(gym.Env):
 
         snake_condition, hp, tail_size = self.env.update([self.action_map[a] for a in actions])
 
-        reward = reward_map[snake_condition]  / 100
-
         is_terminal = snake_condition in [SnakeState.DED, SnakeState.WON] 
         truncated = self.env.time_steps > MAX_STEPS
-
+        
+        # Only give reward at the end of the episode based on final snake length
+        reward = 0
+        if is_terminal or truncated:
+            reward = (tail_size - self.initial_tail_size) / 10  # Scale the reward appropriately
+        
         return self._get_obs(), reward, is_terminal, truncated, self._get_info()
     
     def render(self):

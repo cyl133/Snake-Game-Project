@@ -5,11 +5,11 @@ from gym_env import SnakeGameEnv
 
 log_dir = "logs"
 
-# vec_env = make_vec_env(lambda: SnakeGameEnv(num_snakes=1, num_teams=1), n_envs=4)
-env = SnakeGameEnv(num_snakes=1, num_teams=1)
+vec_env = make_vec_env(lambda: SnakeGameEnv(num_snakes=1, num_teams=1), n_envs=4)
+# env = SnakeGameEnv(num_snakes=1, num_teams=1)
 
 
-model = PPO('MultiInputPolicy', env, verbose=True, device='cuda', tensorboard_log=log_dir, n_steps=1024, )
+model = PPO('MultiInputPolicy', vec_env, verbose=True, device='cuda', tensorboard_log=log_dir, n_steps=1024, )
 # # model = PPO.load("ppo_snake", env=env, device="cuda", tensorboard_log=log_dir)
 
 

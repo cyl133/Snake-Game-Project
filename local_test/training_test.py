@@ -6,7 +6,7 @@ from gym_env import SnakeGameEnv
 class LRSchedule:
     def __init__(self, total_timesteps, decay_start=0.5):
         self.total_timesteps = total_timesteps
-        self.decay_start = decay_start
+        self.decay_start = 1 - decay_start
         self.timesteps_trained = 0
 
     def __call__(self, _):
@@ -30,5 +30,5 @@ model = PPO('MultiInputPolicy', env, verbose=True, device='cuda', tensorboard_lo
 
 
 for i in range(10):
-    model.learn(100000, progress_bar=True, tb_log_name="PPO-3.1301", reset_num_timesteps=False)
+    model.learn(10000, progress_bar=True, tb_log_name="PPO-3.1301", reset_num_timesteps=False)
     model.save('ppo_snake3.1301.zip')

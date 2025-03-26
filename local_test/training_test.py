@@ -5,7 +5,7 @@ from gym_env import SnakeGameEnv
 
 log_dir = "logs"
 
-vec_env = make_vec_env(lambda: SnakeGameEnv(num_snakes=1, num_teams=1), n_envs=4)
+vec_env = make_vec_env(lambda: SnakeGameEnv(num_snakes=1, num_teams=1), n_envs=2)
 # env = SnakeGameEnv(num_snakes=1, num_teams=1)
 
 

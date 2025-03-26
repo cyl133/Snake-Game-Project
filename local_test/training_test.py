@@ -15,13 +15,14 @@ class LRSchedule:
 
         if progress_remaining < self.decay_start:
             return 3e-4 * (progress_remaining / self.decay_start)
-        return 3e-4 * progress_remaining
+        return 3e-4
 
 
 log_dir = "logs"
 
 # vec_env = make_vec_env(lambda: SnakeGameEnv(num_snakes=1, num_teams=1), n_envs=2)
 env = SnakeGameEnv(num_snakes=1, num_teams=1)
+
 
 
 model = PPO('MultiInputPolicy', env, verbose=True, device='cuda', tensorboard_log=log_dir, n_steps=1024, learning_rate=LRSchedule(10000, 0.3))

@@ -164,7 +164,7 @@ class Snake:
         self.head = new_head
 
         if decay:
-            self.hp -= 1
+            self.hp -= 2
 
     def shed(self):
         if self.tail_size > 0:

@@ -53,7 +53,7 @@ model = PPO(
 
 # Create wandb callback
 wandb_callback = WandbCallback(
-    gradient_save_freq=100,
+    gradient_save_freq=1024,
     model_save_path=f"models/{run.id}",
     verbose=2,
 )

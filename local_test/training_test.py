@@ -10,14 +10,13 @@ class LRSchedule:
         self.timesteps_trained = 0
 
     def __call__(self, _):
+        self.timesteps_trained += 1
         progress_remaining = 1 - self.timesteps_trained / self.total_timesteps
 
         if progress_remaining < self.decay_start:
             return 3e-4 * (progress_remaining / self.decay_start)
         return 3e-4 * progress_remaining
 
-    def update(self, train_steps):
-        self.timesteps_trained += train_steps
 
 log_dir = "logs"
 
@@ -30,5 +29,5 @@ model = PPO('MultiInputPolicy', env, verbose=True, device='cuda', tensorboard_lo
 
 
 for i in range(10):
-    model.learn(10000, progress_bar=True, tb_log_name="PPO-3.1301", reset_num_timesteps=False)
-    model.save('ppo_snake3.1301.zip')
+    model.learn(10000, progress_bar=True, tb_log_name="test", reset_num_timesteps=False)
+    model.save('test.zip')

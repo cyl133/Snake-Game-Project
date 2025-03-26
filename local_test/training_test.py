@@ -9,10 +9,10 @@ log_dir = "logs"
 env = SnakeGameEnv(num_snakes=1, num_teams=1)
 
 
-model = PPO('MultiInputPolicy', env, verbose=True, device='cuda', tensorboard_log=log_dir, n_steps=1024, )
+model = PPO('MultiInputPolicy', env, verbose=True, device='cuda', tensorboard_log=log_dir, n_steps=1024, learning_rate=lambda x: 0.003*x)
 # # model = PPO.load("ppo_snake", env=env, device="cuda", tensorboard_log=log_dir)
 
 
 for i in range(10):
-    model.learn(100000, progress_bar=True, tb_log_name="PPO-3.1321", reset_num_timesteps=False)
-    model.save('PPO-3.1321.zip')
+    model.learn(100000, progress_bar=True, tb_log_name="PPO-3.1301", reset_num_timesteps=False)
+    model.save('ppo_snake3.1301.zip')

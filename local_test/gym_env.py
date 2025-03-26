@@ -75,7 +75,7 @@ class SnakeGameEnv(gym.Env):
             for i in range(1, self.num_snakes):
                 actions.append(self.action_space.sample())
 
-        snake_condition, hp, tail_size = self.env.update([self.action_map[a] for a in actions])
+        snake_condition, hp, tail_size, food_eaten = self.env.update([self.action_map[a] for a in actions])
 
         is_terminal = snake_condition in [SnakeState.DED, SnakeState.WON] 
         truncated = self.env.time_steps > MAX_STEPS
@@ -83,7 +83,7 @@ class SnakeGameEnv(gym.Env):
         # Only give reward at the end of the episode based on final snake length
         reward = 0
         if is_terminal or truncated:
-            reward = (tail_size - self.initial_tail_size) / 10  # Scale the reward appropriately
+            reward = food_eaten  # Scale the reward appropriately
         
         return self._get_obs(), reward, is_terminal, truncated, self._get_info()
     

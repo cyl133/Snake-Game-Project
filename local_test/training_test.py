@@ -21,15 +21,12 @@ class SnakeMetricsCallback(BaseCallback):
                 env = self.training_env.envs[0]  # Assuming single environment or all envs are the same
                 
                 # Access the actual environment through the wrappers
-                # The actual environment might be nested several layers deep
                 actual_env = env
                 while hasattr(actual_env, 'env'):
                     actual_env = actual_env.env
                 
-                # Calculate food eaten (tail size increase from initial)
-                current_tail_size = actual_env.snakes[0].tail_size if hasattr(actual_env, 'snakes') else 0
-                initial_tail_size = actual_env.initial_tail_size if hasattr(actual_env, 'initial_tail_size') else 0
-                food_eaten = max(0, current_tail_size - initial_tail_size)
+                # Directly get food eaten from the snake
+                food_eaten = actual_env.snakes[0].food_eaten if hasattr(actual_env, 'snakes') else 0
                 
                 # Get episode length
                 episode_length = actual_env.time_steps if hasattr(actual_env, 'time_steps') else 0

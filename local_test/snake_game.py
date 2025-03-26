@@ -132,6 +132,7 @@ class Snake:
         self.direction = Direction.UP  # Need to add validation later
         self.dir_idx = 0
         self.hp = health
+        self.food_eaten = 0
         self.colour = colour 
 
     def self_collision(self):
@@ -252,6 +253,7 @@ class Env:
             if snake.head in self.fruit_locations:
                 self.fruit_locations.pop(self.fruit_locations.index(snake.head))
                 snake.tail_size += 0
+                snake.food_eaten += 1
                 snake.hp += 4
                 snake_condition = SnakeState.ATE
             
@@ -277,7 +279,7 @@ class Env:
         
         self.set_fruits()
         self.time_steps += 1
-        return snake_states[0], self.snakes[0].hp, self.snakes[0].tail_size
+        return snake_states[0], self.snakes[0].hp, self.snakes[0].tail_size, self.snakes[0].food_eaten
 
     @property
     def fruit_loc(self):

@@ -60,6 +60,12 @@ class SnakeGameEnv(gym.Env):
         }
 
     def _get_info(self):
+        # If we have snakes available, return relevant metrics
+        if hasattr(self.env, 'snakes') and len(self.env.snakes) > 0:
+            return {
+                'food_eaten': self.env.snakes[0].food_eaten,
+                'episode_length': self.env.time_steps
+            }
         return {}
         
     def reset(self, *, seed = None):

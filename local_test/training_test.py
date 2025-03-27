@@ -1,6 +1,7 @@
 from stable_baselines3 import PPO
 from stable_baselines3.common.env_util import make_vec_env
 from stable_baselines3.common.callbacks import BaseCallback
+from stable_baselines3.common.vec_env import SubprocVecEnv
 from gym_env import SnakeGameEnv
 import wandb
 from wandb.integration.sb3 import WandbCallback
@@ -17,28 +18,21 @@ class SnakeMetricsCallback(BaseCallback):
         # Check for episode terminations
         for idx, done in enumerate(self.locals.get('dones', [])):
             if done:
-                # Get info from the environment
-                env = self.training_env.envs[0]  # Assuming single environment or all envs are the same
-                
-                # Access the actual environment through the wrappers
-                actual_env = env
-                while hasattr(actual_env, 'env'):
-                    actual_env = actual_env.env
-                
-                # Directly get food eaten from the snake
-                food_eaten = actual_env.snakes[0].food_eaten if hasattr(actual_env, 'snakes') else 0
-                
-                # Get episode length
-                episode_length = actual_env.time_steps if hasattr(actual_env, 'time_steps') else 0
-                
-                # Log to wandb
-                wandb.log({
-                    "food_eaten_per_episode": food_eaten,
-                    "episode_length": episode_length
-                })
-                
-                self.episode_lengths.append(episode_length)
-                self.food_eaten.append(food_eaten)
+                # Get info from the environment through infos
+                infos = self.locals.get('infos', [])
+                if len(infos) > idx:
+                    info = infos[idx]
+                    food_eaten = info.get('food_eaten', 0)
+                    episode_length = info.get('episode_length', 0)
+                    
+                    # Log to wandb
+                    wandb.log({
+                        "food_eaten_per_episode": food_eaten,
+                        "episode_length": episode_length
+                    })
+                    
+                    self.episode_lengths.append(episode_length)
+                    self.food_eaten.append(food_eaten)
                 
         return True
 
@@ -65,9 +59,10 @@ run = wandb.init(
         "algorithm": "PPO",
         "num_snakes": 1,
         "num_teams": 1,
-        "n_steps": 1024,
-        "total_timesteps": 500000,  # 50 * 10000
-        "decay_start": 0.3,
+        "n_steps": 256,          # Reduced from 1024 since we'll collect from multiple envs
+        "total_timesteps": 500000,
+        "n_envs": 8,             # Number of parallel environments
+        "batch_size": 256,       # Increased for better GPU utilization
     },
     sync_tensorboard=True,  # Auto-upload tensorboard metrics
 )
@@ -75,17 +70,27 @@ run = wandb.init(
 
 log_dir = "logs"
 
-# Create environment
-env = make_vec_env(SnakeGameEnv, env_kwargs={"num_snakes": 1, "num_teams": 1})
+# Create environment with parallel processing
+env = make_vec_env(
+    SnakeGameEnv, 
+    n_envs=8,               # Run 8 environments in parallel
+    vec_env_cls=SubprocVecEnv,  # Use subprocess vectorization for true parallelism
+    env_kwargs={"num_snakes": 1, "num_teams": 1}
+)
 
-# Create model with wandb callback
+# Create model with appropriate parameters for parallel environments
 model = PPO(
     'MultiInputPolicy', 
     env, 
-    verbose=True, 
+    verbose=1, 
     device='cuda', 
     tensorboard_log=log_dir, 
-    n_steps=1024
+    n_steps=256,           # Collect fewer steps per environment since we have multiple
+    batch_size=256,        # Larger batches for better GPU utilization
+    n_epochs=10,           # More optimization epochs per update
+    learning_rate=3e-4,    # Standard learning rate for PPO
+    clip_range=0.2,        # Standard clip range for PPO
+    ent_coef=0.01          # Slightly higher entropy coefficient for exploration
 )
 
 # Create callbacks
@@ -99,18 +104,19 @@ wandb_callback = WandbCallback(
 # Combine callbacks
 callbacks = [wandb_callback, snake_metrics_callback]
 
-# Training loop
+# Training loop with checkpoints
 total_timesteps = 0
-for i in range(50):
+checkpoint_frequency = 100000
+for i in range(5):  # 5 training phases of 100k steps each
     model.learn(
-        100000, 
+        checkpoint_frequency, 
         progress_bar=True, 
-        tb_log_name="test", 
+        tb_log_name="parallel_training", 
         reset_num_timesteps=False,
         callback=callbacks
     )
     model.save(f'models/{run.id}/checkpoint_{i}')
-    total_timesteps += 100000
+    total_timesteps += checkpoint_frequency
 
 # Close wandb run when done
 wandb.finish()

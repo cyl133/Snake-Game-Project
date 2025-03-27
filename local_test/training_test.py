@@ -23,8 +23,9 @@ class SnakeFeaturesExtractor(BaseFeaturesExtractor):
         self.image_space = observation_space.spaces['image']
         self.vector_space = observation_space.spaces['vector']
         
+        # Image input has 3 channels (RGB)
         self.cnn = nn.Sequential(
-            nn.Conv2d(3, 16, kernel_size=5, stride=2, padding=2),  # Downsampling with stride
+            nn.Conv2d(3, 16, kernel_size=5, stride=2, padding=2),
             nn.ReLU(),
             nn.Conv2d(16, 32, kernel_size=3, stride=1, padding=1),
             nn.ReLU(),
@@ -33,9 +34,10 @@ class SnakeFeaturesExtractor(BaseFeaturesExtractor):
         
         # Compute CNN output shape
         with th.no_grad():
-            # Create proper sample tensor with channels first for PyTorch
-            sample = self.image_space.sample()[None].transpose(0, 3, 1, 2)
-            sample_tensor = th.as_tensor(sample).float()
+            # Sample image is in [H, W, C] format from gym_env
+            sample = self.image_space.sample()
+            # Need to convert to [1, C, H, W] for PyTorch CNN
+            sample_tensor = th.as_tensor(sample).float().permute(2, 0, 1).unsqueeze(0)
             n_flatten = self.cnn(sample_tensor).shape[1]
         
         # Vector features
@@ -52,10 +54,13 @@ class SnakeFeaturesExtractor(BaseFeaturesExtractor):
         )
         
     def forward(self, observations):
-        # Process image observations - transpose to get channels first (PyTorch format)
+        # Process image observations
         image_obs = th.as_tensor(observations['image']).float()
+        
         # Convert from [batch, height, width, channels] to [batch, channels, height, width]
+        # The image from gym_env is in [H, W, C] format, so we need correct permutation
         image_obs = image_obs.permute(0, 3, 1, 2)
+        
         image_features = self.cnn(image_obs)
         image_features = self.linear_cnn(image_features)
         

@@ -23,8 +23,9 @@ class SnakeFeaturesExtractor(BaseFeaturesExtractor):
         self.image_space = observation_space.spaces['image']
         self.vector_space = observation_space.spaces['vector']
         
-        # Image features
-        n_input_channels = self.image_space.shape[2]  # Number of channels
+        # Image features - Fix the channel dimension
+        # In gym/gymnasium, image shape is typically (height, width, channels)
+        n_input_channels = self.image_space.shape[2]  # Correct for channels
         
         self.cnn = nn.Sequential(
             nn.Conv2d(n_input_channels, 16, kernel_size=3, stride=1, padding=1),
@@ -36,7 +37,8 @@ class SnakeFeaturesExtractor(BaseFeaturesExtractor):
         
         # Compute CNN output shape
         with th.no_grad():
-            sample = self.image_space.sample()[None]
+            # Create proper sample tensor with channels first for PyTorch
+            sample = self.image_space.sample()[None].transpose(0, 3, 1, 2)
             sample_tensor = th.as_tensor(sample).float()
             n_flatten = self.cnn(sample_tensor).shape[1]
         
@@ -54,8 +56,10 @@ class SnakeFeaturesExtractor(BaseFeaturesExtractor):
         )
         
     def forward(self, observations):
-        # Process image observations
+        # Process image observations - transpose to get channels first (PyTorch format)
         image_obs = th.as_tensor(observations['image']).float()
+        # Convert from [batch, height, width, channels] to [batch, channels, height, width]
+        image_obs = image_obs.permute(0, 3, 1, 2)
         image_features = self.cnn(image_obs)
         image_features = self.linear_cnn(image_features)
         

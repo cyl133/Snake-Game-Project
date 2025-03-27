@@ -52,71 +52,76 @@ class LRSchedule:
         return 3e-4
 
 
-# Initialize wandb
-run = wandb.init(
-    project="snake-rl",  # Project name
-    config={
-        "algorithm": "PPO",
-        "num_snakes": 1,
-        "num_teams": 1,
-        "n_steps": 256,          # Reduced from 1024 since we'll collect from multiple envs
-        "total_timesteps": 500000,
-        "n_envs": 8,             # Number of parallel environments
-        "batch_size": 256,       # Increased for better GPU utilization
-    },
-    sync_tensorboard=True,  # Auto-upload tensorboard metrics
-)
-
-
-log_dir = "logs"
-
-# Create environment with parallel processing
-env = make_vec_env(
-    SnakeGameEnv, 
-    n_envs=8,               # Run 8 environments in parallel
-    vec_env_cls=SubprocVecEnv,  # Use subprocess vectorization for true parallelism
-    env_kwargs={"num_snakes": 1, "num_teams": 1}
-)
-
-# Create model with appropriate parameters for parallel environments
-model = PPO(
-    'MultiInputPolicy', 
-    env, 
-    verbose=1, 
-    device='cuda', 
-    tensorboard_log=log_dir, 
-    n_steps=256,           # Collect fewer steps per environment since we have multiple
-    batch_size=256,        # Larger batches for better GPU utilization
-    n_epochs=10,           # More optimization epochs per update
-    learning_rate=3e-4,    # Standard learning rate for PPO
-    clip_range=0.2,        # Standard clip range for PPO
-    ent_coef=0.01          # Slightly higher entropy coefficient for exploration
-)
-
-# Create callbacks
-snake_metrics_callback = SnakeMetricsCallback()
-wandb_callback = WandbCallback(
-    gradient_save_freq=1024,
-    model_save_path=f"models/{run.id}",
-    verbose=2,
-)
-
-# Combine callbacks
-callbacks = [wandb_callback, snake_metrics_callback]
-
-# Training loop with checkpoints
-total_timesteps = 0
-checkpoint_frequency = 100000
-for i in range(5):  # 5 training phases of 100k steps each
-    model.learn(
-        checkpoint_frequency, 
-        progress_bar=True, 
-        tb_log_name="parallel_training", 
-        reset_num_timesteps=False,
-        callback=callbacks
+def main():
+    # Initialize wandb
+    run = wandb.init(
+        project="snake-rl",  # Project name
+        config={
+            "algorithm": "PPO",
+            "num_snakes": 1,
+            "num_teams": 1,
+            "n_steps": 256,          # Reduced from 1024 since we'll collect from multiple envs
+            "total_timesteps": 500000,
+            "n_envs": 8,             # Number of parallel environments
+            "batch_size": 256,       # Increased for better GPU utilization
+        },
+        sync_tensorboard=True,  # Auto-upload tensorboard metrics
     )
-    model.save(f'models/{run.id}/checkpoint_{i}')
-    total_timesteps += checkpoint_frequency
 
-# Close wandb run when done
-wandb.finish()
+
+    log_dir = "logs"
+
+    # Create environment with parallel processing
+    env = make_vec_env(
+        SnakeGameEnv, 
+        n_envs=8,               # Run 8 environments in parallel
+        vec_env_cls=SubprocVecEnv,  # Use subprocess vectorization for true parallelism
+        env_kwargs={"num_snakes": 1, "num_teams": 1}
+    )
+
+    # Create model with appropriate parameters for parallel environments
+    model = PPO(
+        'MultiInputPolicy', 
+        env, 
+        verbose=1, 
+        device='cuda', 
+        tensorboard_log=log_dir, 
+        n_steps=256,           # Collect fewer steps per environment since we have multiple
+        batch_size=256,        # Larger batches for better GPU utilization
+        n_epochs=10,           # More optimization epochs per update
+        learning_rate=3e-4,    # Standard learning rate for PPO
+        clip_range=0.2,        # Standard clip range for PPO
+        ent_coef=0.01          # Slightly higher entropy coefficient for exploration
+    )
+
+    # Create callbacks
+    snake_metrics_callback = SnakeMetricsCallback()
+    wandb_callback = WandbCallback(
+        gradient_save_freq=1024,
+        model_save_path=f"models/{run.id}",
+        verbose=2,
+    )
+
+    # Combine callbacks
+    callbacks = [wandb_callback, snake_metrics_callback]
+
+    # Training loop with checkpoints
+    total_timesteps = 0
+    checkpoint_frequency = 100000
+    for i in range(5):  # 5 training phases of 100k steps each
+        model.learn(
+            checkpoint_frequency, 
+            progress_bar=True, 
+            tb_log_name="parallel_training", 
+            reset_num_timesteps=False,
+            callback=callbacks
+        )
+        model.save(f'models/{run.id}/checkpoint_{i}')
+        total_timesteps += checkpoint_frequency
+
+    # Close wandb run when done
+    wandb.finish()
+
+
+if __name__ == "__main__":
+    main()

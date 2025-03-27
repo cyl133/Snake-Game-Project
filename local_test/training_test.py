@@ -68,8 +68,7 @@ run = wandb.init(
         "n_steps": 1024,
         "total_timesteps": 500000,  # 50 * 10000
         "decay_start": 0.3,
-    },
-    sync_tensorboard=True,  # Auto-upload tensorboard metrics
+    }
 )
 
 log_dir = "logs"
@@ -102,22 +101,14 @@ callbacks = [wandb_callback, snake_metrics_callback]
 total_timesteps = 0
 for i in range(50):
     model.learn(
-        10000, 
+        100000, 
         progress_bar=True, 
         tb_log_name="test", 
         reset_num_timesteps=False,
         callback=callbacks
     )
     model.save(f'models/{run.id}/checkpoint_{i}')
-    total_timesteps += 10000
-    
-    # Log custom metrics at each checkpoint
-    wandb.log({
-        "checkpoint": i,
-        "total_timesteps": total_timesteps,
-        "avg_food_eaten_last_checkpoint": np.mean(snake_metrics_callback.food_eaten[-100:]) if snake_metrics_callback.food_eaten else 0,
-        "avg_episode_length_last_checkpoint": np.mean(snake_metrics_callback.episode_lengths[-100:]) if snake_metrics_callback.episode_lengths else 0,
-    })
+    total_timesteps += 100000
 
 # Close wandb run when done
 wandb.finish()

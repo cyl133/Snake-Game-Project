@@ -31,7 +31,8 @@ class SnakeGameEnv(gym.Env):
         }
         self.num_snakes = num_snakes
         self.numteams = num_teams
-        self.scale = 64
+        self.scale = 1
+        self.render_scale = 64
         self.render_mode = render_mode
         self.gs = gs
         self.initial_tail_size = INIT_TAIL_SIZE
@@ -54,8 +55,7 @@ class SnakeGameEnv(gym.Env):
         snakes = [(snake.hp, snake.direction.to_int(), snake.colour.value, snake.head.x, snake.head.y) for snake in self.env.snakes]
         snakes = list(itertools.chain(*snakes)) + [0, 0, 0] * (self.num_snakes - len(snakes))
         return {
-            'image': cv2.resize(self.env.to_image(), (self.gs*self.scale, self.gs*self.scale), interpolation=cv2.INTER_NEAREST),
-            # 'image': np.expand_dims(self.env.to_image().astype('float32'), -1),
+            'image': self.env.to_image(),
             'vector': snakes
         }
 
@@ -88,13 +88,12 @@ class SnakeGameEnv(gym.Env):
         return self._get_obs(), reward, is_terminal, truncated, self._get_info()
     
     def render(self):
-        im = self.env.to_image(gradation=True)
         if self.render_mode == 'human':
-            cv2.imshow('Snake Game', cv2.resize(im, (640, 640), interpolation=cv2.INTER_NEAREST))
-            print(self._get_obs()['vector'])
-            cv2.waitKey(0)
+            im = self.env.to_image()
+            cv2.imshow('Snake Game', cv2.resize(im, (self.gs*self.render_scale, self.gs*self.render_scale), interpolation=cv2.INTER_NEAREST))
+            cv2.waitKey(1)
         elif self.render_mode == 'rgb_array':
-            return cv2.resize(im, (640, 640), interpolation=cv2.INTER_NEAREST)
+            return cv2.resize(self.env.to_image(), (640, 640), interpolation=cv2.INTER_NEAREST)
         elif self.render_mode == 'ansi':
             print(self.env.to_string())
 

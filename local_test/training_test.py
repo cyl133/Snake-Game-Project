@@ -17,9 +17,7 @@ class SnakeFeaturesExtractor(BaseFeaturesExtractor):
     CNN feature extractor for Dict observation space with 'image' and 'vector' keys.
     """
     def __init__(self, observation_space, features_dim=64):
-        # We don't call the parent init directly here
-        # since we're handling the observation space differently
-        super(BaseFeaturesExtractor, self).__init__(observation_space, features_dim)
+        super().__init__(observation_space, features_dim)
         
         # Extract spaces
         self.image_space = observation_space.spaces['image']

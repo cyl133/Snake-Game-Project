@@ -11,13 +11,22 @@ import torch.nn as nn
 from stable_baselines3.common.torch_layers import BaseFeaturesExtractor
 
 
-# Custom CNN for smaller images
-class SmallCNN(BaseFeaturesExtractor):
+# Custom CNN for Dict observation spaces with small images
+class SnakeFeaturesExtractor(BaseFeaturesExtractor):
+    """
+    CNN feature extractor for Dict observation space with 'image' and 'vector' keys.
+    """
     def __init__(self, observation_space, features_dim=64):
-        super(SmallCNN, self).__init__(observation_space, features_dim)
+        # We don't call the parent init directly here
+        # since we're handling the observation space differently
+        super(BaseFeaturesExtractor, self).__init__(observation_space, features_dim)
         
-        # We need to know the image shape
-        n_input_channels = observation_space.shape[2]  # Number of channels
+        # Extract spaces
+        self.image_space = observation_space.spaces['image']
+        self.vector_space = observation_space.spaces['vector']
+        
+        # Image features
+        n_input_channels = self.image_space.shape[2]  # Number of channels
         
         self.cnn = nn.Sequential(
             nn.Conv2d(n_input_channels, 16, kernel_size=3, stride=1, padding=1),
@@ -27,19 +36,38 @@ class SmallCNN(BaseFeaturesExtractor):
             nn.Flatten(),
         )
         
-        # Compute shape by doing one forward pass
+        # Compute CNN output shape
         with th.no_grad():
-            sample = observation_space.sample()[None]
+            sample = self.image_space.sample()[None]
             sample_tensor = th.as_tensor(sample).float()
             n_flatten = self.cnn(sample_tensor).shape[1]
         
-        self.linear = nn.Sequential(
-            nn.Linear(n_flatten, features_dim),
-            nn.ReLU(),
+        # Vector features
+        vector_dim = self.vector_space.shape[0]
+        
+        # Linear layers for combining features
+        self.linear_cnn = nn.Sequential(nn.Linear(n_flatten, 64), nn.ReLU())
+        self.linear_vector = nn.Sequential(nn.Linear(vector_dim, 16), nn.ReLU())
+        
+        # Final combined output
+        self.linear_combined = nn.Sequential(
+            nn.Linear(64 + 16, features_dim),
+            nn.ReLU()
         )
         
     def forward(self, observations):
-        return self.linear(self.cnn(observations))
+        # Process image observations
+        image_obs = th.as_tensor(observations['image']).float()
+        image_features = self.cnn(image_obs)
+        image_features = self.linear_cnn(image_features)
+        
+        # Process vector observations
+        vector_obs = th.as_tensor(observations['vector']).float()
+        vector_features = self.linear_vector(vector_obs)
+        
+        # Combine features
+        combined = th.cat([image_features, vector_features], dim=1)
+        return self.linear_combined(combined)
 
 
 class SnakeMetricsCallback(BaseCallback):
@@ -112,9 +140,9 @@ def main():
         env_kwargs={"num_snakes": 1, "num_teams": 1}
     )
 
-    # Configure a custom policy with our CNN that works on small images
+    # Configure a custom policy with our feature extractor
     policy_kwargs = {
-        "features_extractor_class": SmallCNN,
+        "features_extractor_class": SnakeFeaturesExtractor,
         "features_extractor_kwargs": {"features_dim": 64},
     }
 
@@ -131,7 +159,7 @@ def main():
         learning_rate=3e-4,
         clip_range=0.2,
         ent_coef=0.01,
-        policy_kwargs=policy_kwargs
+        policy_kwargs=policy_kwargs  # Use our custom features extractor
     )
 
     # Create callbacks

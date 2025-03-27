@@ -68,8 +68,10 @@ run = wandb.init(
         "n_steps": 1024,
         "total_timesteps": 500000,  # 50 * 10000
         "decay_start": 0.3,
-    }
+    },
+    sync_tensorboard=True,  # Auto-upload tensorboard metrics
 )
+
 
 log_dir = "logs"
 

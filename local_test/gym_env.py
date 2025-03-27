@@ -10,7 +10,7 @@ MAX_STEPS = 50
 # Initial game settings
 INIT_HP = 10
 INIT_TAIL_SIZE = 1
-MAX_FRUITS = 50
+MAX_FRUITS = 10
 
 # Rewards
 reward_map = {

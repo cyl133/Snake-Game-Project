@@ -6,6 +6,40 @@ from gym_env import SnakeGameEnv
 import wandb
 from wandb.integration.sb3 import WandbCallback
 import numpy as np
+import torch as th
+import torch.nn as nn
+from stable_baselines3.common.torch_layers import BaseFeaturesExtractor
+
+
+# Custom CNN for smaller images
+class SmallCNN(BaseFeaturesExtractor):
+    def __init__(self, observation_space, features_dim=64):
+        super(SmallCNN, self).__init__(observation_space, features_dim)
+        
+        # We need to know the image shape
+        n_input_channels = observation_space.shape[2]  # Number of channels
+        
+        self.cnn = nn.Sequential(
+            nn.Conv2d(n_input_channels, 16, kernel_size=3, stride=1, padding=1),
+            nn.ReLU(),
+            nn.Conv2d(16, 32, kernel_size=3, stride=1, padding=1),
+            nn.ReLU(),
+            nn.Flatten(),
+        )
+        
+        # Compute shape by doing one forward pass
+        with th.no_grad():
+            sample = observation_space.sample()[None]
+            sample_tensor = th.as_tensor(sample).float()
+            n_flatten = self.cnn(sample_tensor).shape[1]
+        
+        self.linear = nn.Sequential(
+            nn.Linear(n_flatten, features_dim),
+            nn.ReLU(),
+        )
+        
+    def forward(self, observations):
+        return self.linear(self.cnn(observations))
 
 
 class SnakeMetricsCallback(BaseCallback):
@@ -60,24 +94,29 @@ def main():
             "algorithm": "PPO",
             "num_snakes": 1,
             "num_teams": 1,
-            "n_steps": 256,          # Reduced from 1024 since we'll collect from multiple envs
+            "n_steps": 256,
             "total_timesteps": 500000,
-            "n_envs": 8,             # Number of parallel environments
-            "batch_size": 256,       # Increased for better GPU utilization
+            "n_envs": 8,
+            "batch_size": 256,
         },
         sync_tensorboard=True,  # Auto-upload tensorboard metrics
     )
-
 
     log_dir = "logs"
 
     # Create environment with parallel processing
     env = make_vec_env(
         SnakeGameEnv, 
-        n_envs=8,               # Run 8 environments in parallel
-        vec_env_cls=SubprocVecEnv,  # Use subprocess vectorization for true parallelism
+        n_envs=8,
+        vec_env_cls=SubprocVecEnv,
         env_kwargs={"num_snakes": 1, "num_teams": 1}
     )
+
+    # Configure a custom policy with our CNN that works on small images
+    policy_kwargs = {
+        "features_extractor_class": SmallCNN,
+        "features_extractor_kwargs": {"features_dim": 64},
+    }
 
     # Create model with appropriate parameters for parallel environments
     model = PPO(
@@ -86,12 +125,13 @@ def main():
         verbose=1, 
         device='cuda', 
         tensorboard_log=log_dir, 
-        n_steps=256,           # Collect fewer steps per environment since we have multiple
-        batch_size=256,        # Larger batches for better GPU utilization
-        n_epochs=10,           # More optimization epochs per update
-        learning_rate=3e-4,    # Standard learning rate for PPO
-        clip_range=0.2,        # Standard clip range for PPO
-        ent_coef=0.01          # Slightly higher entropy coefficient for exploration
+        n_steps=256,
+        batch_size=256,
+        n_epochs=10,
+        learning_rate=3e-4,
+        clip_range=0.2,
+        ent_coef=0.01,
+        policy_kwargs=policy_kwargs
     )
 
     # Create callbacks

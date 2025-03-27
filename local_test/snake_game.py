@@ -165,7 +165,8 @@ class Snake:
         self.head = new_head
 
         if decay:
-            self.hp -= 2
+            #self.hp -= 1
+            pass
 
     def shed(self):
         if self.tail_size > 0:
@@ -252,8 +253,8 @@ class Env:
 
             if snake.head in self.fruit_locations:
                 self.fruit_locations.pop(self.fruit_locations.index(snake.head))
-                snake.tail_size += 0
-                snake.food_eaten += 1
+                snake.tail_size += 1
+                snake.food_eaten += 10
                 snake.hp += 4
                 snake_condition = SnakeState.ATE
             

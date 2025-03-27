@@ -23,12 +23,8 @@ class SnakeFeaturesExtractor(BaseFeaturesExtractor):
         self.image_space = observation_space.spaces['image']
         self.vector_space = observation_space.spaces['vector']
         
-        # Image features - Fix the channel dimension
-        # In gym/gymnasium, image shape is typically (height, width, channels)
-        n_input_channels = self.image_space.shape[2]  # Correct for channels
-        
         self.cnn = nn.Sequential(
-            nn.Conv2d(n_input_channels, 16, kernel_size=3, stride=1, padding=1),
+            nn.Conv2d(3, 16, kernel_size=5, stride=2, padding=2),  # Downsampling with stride
             nn.ReLU(),
             nn.Conv2d(16, 32, kernel_size=3, stride=1, padding=1),
             nn.ReLU(),

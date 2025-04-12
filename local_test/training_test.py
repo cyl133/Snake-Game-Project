@@ -20,7 +20,7 @@ from llm_reward_shaper import DEFAULT_REWARD_CONFIG, LLM_MODEL, LLM_API_URL, GOO
 CONFIG_DIR = "param_configs"
 LOG_DIR = "logs_wandb"
 MODEL_DIR = "models_wandb"
-LLM_CALL_FREQUENCY = 5000  # Episodes before LLM update
+LLM_CALL_FREQUENCY = 10000  # Episodes before LLM update
 N_ENVS = 32  # Number of environments
 
 os.makedirs(LOG_DIR, exist_ok=True)
@@ -116,6 +116,7 @@ class RewardUpdateCallback(BaseCallback):
         self.stats = []
         self.reward_history = []
         self.current_rewards = DEFAULT_REWARD_CONFIG.copy()
+        self.game_params = None
         
     def _on_step(self):
         # Check for episode completions
@@ -158,32 +159,53 @@ class RewardUpdateCallback(BaseCallback):
                             wandb.log({f"rewards/{k}": v for k, v in self.current_rewards.items()},
                                     step=self.num_timesteps)
                             
-                        # Create a new environment with updated rewards
-                        self._create_new_env()
+                        # Instead of updating the existing environment,
+                        # we'll save the model, create a new environment,
+                        # and reload - following the pattern from the example
+                        self._switch_environment()
                     
                     # Reset stats collection
                     self.stats = []
         
         return True
         
-    def _create_new_env(self):
-        """Creates a new environment with updated rewards and updates the model"""
-        # Get current parameters
-        with open(f"{CONFIG_DIR}/eval.json", "r") as f:
-            game_params = json.load(f)
-            if 'rewards' in game_params:
-                del game_params['rewards']
+    def _switch_environment(self):
+        """Switch to a new environment with updated rewards without recreating the model"""
+        if not self.game_params:
+            # Load game parameters first time
+            with open(f"{CONFIG_DIR}/eval.json", "r") as f:
+                self.game_params = json.load(f)
+                if 'rewards' in self.game_params:
+                    del self.game_params['rewards']
         
-        # Create new environment with updated rewards
+        # Following the pattern from the example code:
+        # 1. Save the current model
+        temp_save_path = f"temp_model_{self.num_timesteps}.zip"
+        self.model.save(temp_save_path)
+        print(f"Saved temporary model to {temp_save_path}")
+        
+        # 2. Create new environment with updated rewards
         print("Creating new environment with updated rewards...")
         new_env = make_vec_env(
-            lambda: SnakeGameEnv(**game_params, reward_config=self.current_rewards.copy()),
+            lambda: SnakeGameEnv(**self.game_params, reward_config=self.current_rewards.copy()),
             n_envs=N_ENVS,
             seed=42
         )
         
-        # Update the model's environment
-        self.model.set_env(new_env)
+        # 3. Load model with new environment but keep parameters
+        # This avoids the error with categorical distribution
+        self.model = self.model.__class__.load(
+            temp_save_path,
+            env=new_env,
+            device=self.model.device
+        )
+        print(f"Loaded model with new environment")
+        
+        # 4. Clean up temp file
+        try:
+            os.remove(temp_save_path)
+        except:
+            pass
         
     def _aggregate_metrics(self):
         """Aggregate stats from completed episodes"""

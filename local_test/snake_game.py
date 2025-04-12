@@ -207,7 +207,7 @@ class Env:
         self.init_hp = init_hp
         self.init_tail_size = init_tail_size
         self.perspective = perspective
-        self.fruit_heal = 20
+        self.fruit_heal = 5
 
         self.reset()
     

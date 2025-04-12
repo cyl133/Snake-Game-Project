@@ -42,7 +42,7 @@ def train():
             "n_steps": 128,
             "batch_size": 2048, # Adjusted based on original script: n_envs * n_steps = 32 * 128 = 4096? Let's keep 2048 for now.
             "n_epochs": 10,
-            "gamma": 0.99,
+            "gamma": 0.90,
             "gae_lambda": 0.95,
             "clip_range": 0.2,
             "ent_coef": 0.01,

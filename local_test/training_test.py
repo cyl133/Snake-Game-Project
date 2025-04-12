@@ -20,7 +20,7 @@ from llm_reward_shaper import DEFAULT_REWARD_CONFIG, LLM_MODEL, LLM_API_URL, GOO
 CONFIG_DIR = "param_configs"
 LOG_DIR = "logs_wandb"
 MODEL_DIR = "models_wandb"
-LLM_CALL_FREQUENCY = 10000  # Episodes before LLM update
+LLM_CALL_FREQUENCY = 500000  # Episodes before LLM update
 N_ENVS = 32  # Number of environments
 
 os.makedirs(LOG_DIR, exist_ok=True)

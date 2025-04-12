@@ -23,7 +23,7 @@ from llm_reward_shaper import metrics_collector, GOOGLE_API_KEY, LLM_API_URL, LL
 config_dir = "param_configs"
 log_dir = "logs_wandb"
 model_dir = "models_wandb"
-LLM_CALL_FREQUENCY_EPISODES = 3000 # How many *total* episodes across all envs trigger LLM
+LLM_CALL_FREQUENCY_EPISODES = 10000 # How many *total* episodes across all envs trigger LLM
 # Set USE_SUBPROC_VEC_ENV to False for easier debugging of callbacks/LLM interaction
 USE_SUBPROC_VEC_ENV = True # Set to False to run in single process
 

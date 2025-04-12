@@ -147,7 +147,7 @@ Example:
 ```
 
 **Guidelines:**
-- Adjust rewards aggressively based on metrics. Keep values between -5.0 and 5.0.
+- Adjust rewards aggressively based on metrics.
 - Keep suggested scalar env params within specified ranges.
 - Generate a `wall_layout` appropriate for the suggested `gs`. Use between 0 and {MAX_WALLS_SUGGESTION} wall coordinates. Ensure coordinates are valid `[x, y]` pairs within the suggested grid size (`gs`).
 - Ensure the wall layout doesn't make the map impossible (e.g., completely blocking off areas).

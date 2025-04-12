@@ -7,6 +7,7 @@ import pygame
 import time # Already imported for info['episode']['t']
 from collections import defaultdict
 from llm_reward_shaper import metrics_collector
+from typing import Dict, Optional, List, Tuple # Import Tuple if not already
 
 # Epsiode length - Removed, now read from params
 # MAX_STEPS = 1000
@@ -39,9 +40,9 @@ class SnakeGameEnv(gym.Env):
     """
     metadata = {"render_modes": ["human", "rgb_array", "ansi"], "render_fps": 4}
 
-    def __init__(self, max_steps=1000, init_hp=100, init_tail_size=4, num_fruits=1, gs=10, perspective='third', num_snakes=1, num_teams=1, render_mode=None):
+    def __init__(self, max_steps=1000, init_hp=100, init_tail_size=4, num_fruits=1, gs=10, perspective='third', num_snakes=1, num_teams=1, render_mode=None, wall_layout: Optional[List[Tuple[int, int]]] = None):
         super().__init__()
-        self.env = Env(grid_size=gs, num_fruits=num_fruits, num_snakes=num_snakes, num_teams=num_teams, init_hp=init_hp, init_tail_size=init_tail_size, perspective=perspective)
+        self.env = Env(grid_size=gs, num_fruits=num_fruits, num_snakes=num_snakes, num_teams=num_teams, init_hp=init_hp, init_tail_size=init_tail_size, perspective=perspective, wall_layout=wall_layout)
 
         if perspective == 'third':
             self.action_map = {
@@ -157,7 +158,10 @@ class SnakeGameEnv(gym.Env):
     def is_near_wall(self, head_pos, threshold=1):
         """Check if the snake is near a wall."""
         x, y = head_pos.x, head_pos.y
-        return x <= threshold or y <= threshold or x >= self.gs - threshold - 1 or y >= self.gs - threshold - 1
+        # Check against grid boundaries AND custom walls
+        on_custom_wall = Point(x, y) in self.env.walls # Access walls from underlying env
+        near_boundary = x <= threshold or y <= threshold or x >= self.gs - threshold - 1 or y >= self.gs - threshold - 1
+        return near_boundary or on_custom_wall # Consider being *on* a wall as near
         
     def is_in_center(self, head_pos):
         """Check if the snake is in the center region of the grid."""
@@ -246,10 +250,13 @@ class SnakeGameEnv(gym.Env):
             death_cause = "timeout"
             if terminated:
                 if snake_condition == SnakeState.DED:
-                    if head_pos and not (0 <= head_pos.x < self.gs and 0 <= head_pos.y < self.gs):
-                        death_cause = "wall"
+                    # Check custom walls first, then boundaries
+                    if head_pos and (head_pos in self.env.walls):
+                        death_cause = "wall" # Hit custom wall
+                    elif head_pos and not (0 <= head_pos.x < self.gs and 0 <= head_pos.y < self.gs):
+                        death_cause = "wall" # Hit boundary wall
                     else:
-                        death_cause = "self"
+                        death_cause = "self" # Assume self-collision otherwise
                 elif snake_condition == SnakeState.WON:
                     death_cause = "won"
 

@@ -5,6 +5,8 @@ import matplotlib.pyplot as plt
 from stable_baselines3 import PPO
 from stable_baselines3.common.evaluation import evaluate_policy
 from gym_env import SnakeGameEnv
+# Assume TUNABLE_ENV_PARAMS might be useful here, or define relevant keys directly
+PLOT_ENV_PARAMS = ["gs", "num_fruits", "init_hp", "max_steps"] # Define which env params to plot
 
 
 def evaluate_and_visualize(model_path, params_path, num_episodes=10, render=True):
@@ -20,8 +22,6 @@ def evaluate_and_visualize(model_path, params_path, num_episodes=10, render=True
     # Load game parameters
     with open(params_path, "r") as f:
         game_params = json.load(f)
-    
-    # Remove the 'rewards' key as it's no longer used by the Env's __init__
     if 'rewards' in game_params:
         del game_params['rewards']
     
@@ -121,89 +121,94 @@ def evaluate_and_visualize(model_path, params_path, num_episodes=10, render=True
 
 
 def plot_reward_evolution(evolution_file="reward_evolution_final.json"):
-    """
-    Plot how the reward function evolved over time based on LLM suggestions.
-    Uses the new history structure saved by the callback.
-    """
+    """Plots reward evolution, metrics, and suggested env params."""
     if not os.path.exists(evolution_file):
-         # Try finding the latest iteration file if final doesn't exist
          iter_files = sorted([f for f in os.listdir('.') if f.startswith('reward_evolution_iter_') and f.endswith('.json')],
                              key=lambda x: int(x.split('_')[-1].split('.')[0]), reverse=True)
-         if iter_files:
-              evolution_file = iter_files[0]
-              print(f"Final evolution file not found, using latest iteration: {evolution_file}")
-         else:
-              print(f"Error: Reward evolution file not found: {evolution_file}")
-              return
+         if iter_files: evolution_file = iter_files[0]; print(f"Using latest: {evolution_file}")
+         else: print(f"Error: File not found: {evolution_file}"); return
 
     try:
-        with open(evolution_file, 'r') as f:
-            data = json.load(f)
-    except Exception as e:
-        print(f"Error loading reward evolution data from {evolution_file}: {e}")
-        return
+        with open(evolution_file, 'r') as f: data = json.load(f)
+    except Exception as e: print(f"Error loading data from {evolution_file}: {e}"); return
+    if not data: print("No reward evolution data found"); return
 
-    if not data:
-        print("No reward evolution data found")
-        return
-
-    # Extract iterations and reward components from the new structure
     iterations = [entry["llm_iteration"] for entry in data]
-    global_steps = [entry["global_step"] for entry in data] # Use global step for x-axis
+    global_steps = [entry["global_step"] for entry in data]
 
-    # Get all unique reward component keys (check both before/after)
-    all_keys = set()
+    # --- Plot Reward Evolution ---
+    reward_keys = set()
     for entry in data:
-        all_keys.update(entry["config_before"].keys())
-        if "config_after" in entry:
-             all_keys.update(entry["config_after"].keys())
+        reward_keys.update(entry["config_before"].keys())
+        if "config_after" in entry: reward_keys.update(entry["config_after"].keys())
 
     plt.figure(figsize=(14, 8))
-    for key in sorted(all_keys):
-        # Plot value *after* the LLM call for this iteration
+    for key in sorted(reward_keys):
         values_after = [entry.get("config_after", entry["config_before"]).get(key, 0) for entry in data]
         plt.plot(global_steps, values_after, marker='o', linestyle='-', label=key)
-
-    plt.xlabel('Global Timestep')
-    plt.ylabel('Reward Value')
+    plt.xlabel('Global Timestep'); plt.ylabel('Reward Value')
     plt.title('Evolution of Reward Components (Value After LLM Call)')
-    plt.legend(loc='center left', bbox_to_anchor=(1, 0.5))
-    plt.grid(True)
-    plt.tight_layout(rect=[0, 0, 0.85, 1]) # Adjust layout for legend
-    plt.savefig('reward_evolution.png')
-    plt.show()
+    plt.legend(loc='center left', bbox_to_anchor=(1, 0.5)); plt.grid(True)
+    plt.tight_layout(rect=[0, 0, 0.85, 1]); plt.savefig('reward_evolution.png'); plt.show()
 
-    # Plot performance metrics over time
-    plt.figure(figsize=(15, 10))
+    # --- Plot Metrics Evolution ---
     metric_keys = set()
     for entry in data:
-        if "metrics_used" in entry:
-            metric_keys.update(entry["metrics_used"].keys())
-
-    plot_metrics = [
-        "avg_episode_length", "avg_food_per_episode", "avg_max_snake_length",
-        "avg_map_coverage_pct", "looping_rate_pct", "avg_action_entropy"
-    ]
+        if "metrics_used" in entry: metric_keys.update(entry["metrics_used"].keys())
+    plot_metrics = ["avg_episode_length", "avg_food_per_episode", "avg_max_snake_length",
+                    "avg_map_coverage_pct", "looping_rate_pct", "avg_action_entropy"]
     plot_metrics = [m for m in plot_metrics if m in metric_keys]
+    num_plots_metrics = len(plot_metrics)
 
-    num_plots = len(plot_metrics)
-    for i, key in enumerate(plot_metrics):
-        plt.subplot(num_plots, 1, i+1)
-        # Get metrics that *led* to this LLM call iteration
-        values = [entry["metrics_used"].get(key, 0) if "metrics_used" in entry else 0 for entry in data]
-        plt.plot(global_steps, values, marker='o', linestyle='-')
-        plt.ylabel(key.replace("_", " ").title())
-        if i == num_plots - 1:
-            plt.xlabel('Global Timestep (Metrics Leading to LLM Call)')
-        else:
-             plt.xticks([]) # Hide x-axis labels for upper plots
-        plt.grid(True)
-        plt.title(f"Evolution of {key.replace('_', ' ').title()}")
+    if num_plots_metrics > 0:
+         plt.figure(figsize=(15, 3 * num_plots_metrics)) # Adjust height
+         for i, key in enumerate(plot_metrics):
+              plt.subplot(num_plots_metrics, 1, i+1)
+              values = [entry["metrics_used"].get(key, 0) if "metrics_used" in entry else 0 for entry in data]
+              plt.plot(global_steps, values, marker='.', linestyle='-') # Use dots for metrics
+              plt.ylabel(key.replace("_", " ").title())
+              if i == num_plots_metrics - 1: plt.xlabel('Global Timestep (Metrics Leading to LLM Call)')
+              else: plt.xticks([])
+              plt.grid(True); plt.title(f"Metric: {key.replace('_', ' ').title()}")
+         plt.suptitle("Evolution of Aggregated Metrics Leading to LLM Calls", y=1.01)
+         plt.tight_layout(rect=[0, 0, 1, 1]); plt.savefig('metrics_evolution.png'); plt.show()
+    else:
+         print("No metrics found in history to plot.")
 
-    plt.suptitle("Evolution of Aggregated Metrics Leading to LLM Calls", y=1.02)
-    plt.tight_layout()
-    plt.savefig('metrics_evolution.png')
-    plt.show()
+
+    # --- Plot Suggested Env Param Evolution ---
+    env_param_keys = set()
+    for entry in data:
+         if "suggestion_details" in entry and entry["suggestion_details"].get("next_stage_env_params"):
+              env_param_keys.update(entry["suggestion_details"]["next_stage_env_params"].keys())
+    # Filter for keys we care about plotting
+    plot_env_keys = [k for k in PLOT_ENV_PARAMS if k in env_param_keys]
+    num_plots_env = len(plot_env_keys)
+
+    if num_plots_env > 0:
+         plt.figure(figsize=(15, 3 * num_plots_env)) # Adjust height
+         for i, key in enumerate(plot_env_keys):
+              plt.subplot(num_plots_env, 1, i+1)
+              # Get suggested value for this key at each iteration
+              values = []
+              valid_steps = []
+              for entry in data:
+                   suggestion = entry.get("suggestion_details", {}).get("next_stage_env_params")
+                   if suggestion and key in suggestion and suggestion[key] != "INVALID":
+                        values.append(suggestion[key])
+                        valid_steps.append(entry["global_step"])
+              if values: # Only plot if there are valid suggestions
+                   plt.plot(valid_steps, values, marker='x', linestyle='--', label=key) # Use crosses for suggestions
+              plt.ylabel(f"Suggested {key}")
+              if i == num_plots_env - 1: plt.xlabel('Global Timestep (LLM Suggestion Point)')
+              else: plt.xticks([])
+              plt.grid(True); plt.title(f"LLM Suggestion for Next Stage: {key}")
+              plt.legend() # Show key name
+
+         plt.suptitle("LLM Suggestions for Next Stage Environment Parameters", y=1.01)
+         plt.tight_layout(rect=[0, 0, 1, 1]); plt.savefig('env_param_suggestions.png'); plt.show()
+    else:
+         print("No environment parameter suggestions found in history to plot.")
 
 
 if __name__ == "__main__":
@@ -227,8 +232,8 @@ if __name__ == "__main__":
     MODEL_PATH = latest_model_path
     PARAMS_PATH = "param_configs/eval.json"
 
-    # First plot the reward and metrics evolution
-    plot_reward_evolution() # Looks for reward_evolution_final.json or latest iter
+    # Plot evolution first
+    plot_reward_evolution()
 
-    # Then evaluate the trained model
-    evaluate_and_visualize(MODEL_PATH, PARAMS_PATH, num_episodes=10, render=False) # Render = False for quick eval 
+    # Then evaluate model (using params from PARAMS_PATH)
+    evaluate_and_visualize(MODEL_PATH, PARAMS_PATH, num_episodes=10, render=False) 

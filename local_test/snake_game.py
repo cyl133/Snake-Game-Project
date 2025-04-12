@@ -4,6 +4,7 @@ from random import sample
 import random
 import numpy as np
 import cv2
+from typing import Optional, List, Tuple
 
 class SnakeState(Enum):
     OK = 1
@@ -136,7 +137,7 @@ class Snake:
         self.head = Point(x, y)
         self.tail = []
         self.tail_size = tail_size
-        self.direction = Direction.UP  # Need to add validation later
+        self.direction = Direction.UP
         self.dir_idx = 0
         self.hp = health
         self.colour = colour
@@ -148,56 +149,29 @@ class Snake:
                 return True
         return False
 
-    # def to_dict(self):
-    #     return {
-    #         'head': self.head.to_dict(),
-    #         'tail': [t.to_dict() for t in self.tail],
-    #         'tail_size': self.tail_size,
-    #         'direction': self.direction.to_dict()
-    #     }
-
-    # @classmethod
-    # def from_dict(cls, d):
-    #     s = cls()
-    #     s.head = Point.from_dict(d['head'])
-    #     s.tail = [Point.from_dict(t) for t in d['tail']]
-    #     s.tail_size = d['tail_size']
-    #     s.direction = Point.from_dict(d['direction'])
-    #     return s
-
     def update(self, decay=False):
         new_head = self.head.copy(self.direction.x(), self.direction.y())
-
         self.tail.append(self.head)
         self.head = new_head
-
-        if decay:
-            self.hp -= 1
+        if decay: self.hp -= 1
 
     def shed(self):
-        if self.tail_size > 0:
-            self.tail = self.tail[-self.tail_size:]
-        else:
-            self.tail = []
+        if self.tail_size > 0: self.tail = self.tail[-self.tail_size:]
+        else: self.tail = []
 
     def __repr__(self):
-        return f"""Head: {self.head}
-        Tail: {self.tail}
-        Dir: {self.direction}
-        """
+        return f"""Head: {self.head}\nTail: {self.tail}\nDir: {self.direction}"""
 
     def apply_direction(self, action):
-        if self.perspective == "third":
-            self.direction = action_dir_map[action]
-
+        if self.perspective == "third": self.direction = action_dir_map[action]
         elif self.perspective == 'first':
-            if action == 'left':
-                self.direction = self.direction.turn_left()
-            elif action == 'right':
-                self.direction = self.direction.turn_right()
+            if action == 'left': self.direction = self.direction.turn_left()
+            elif action == 'right': self.direction = self.direction.turn_right()
 
 class Env:
-    def __init__(self, grid_size=10, num_fruits=5, num_snakes=1, num_teams=1, init_hp=100, init_tail_size=4, perspective='third'):
+    def __init__(self, grid_size=10, num_fruits=5, num_snakes=1, num_teams=1,
+                 init_hp=100, init_tail_size=4, perspective='third',
+                 wall_layout: Optional[List[Tuple[int, int]]] = None):
         self.gs = grid_size
         self.num_fruits = num_fruits
         self.num_snakes = num_snakes
@@ -208,6 +182,13 @@ class Env:
         self.init_tail_size = init_tail_size
         self.perspective = perspective
         self.fruit_heal = 5
+
+        self.walls = set()
+        if wall_layout:
+            for x, y in wall_layout:
+                if 0 <= x < self.gs and 0 <= y < self.gs:
+                    self.walls.add(Point(x, y))
+            print(f"[Env] Initialized with {len(self.walls)} custom walls.")
 
         self.reset()
     
@@ -220,38 +201,31 @@ class Env:
         return min_dist
 
     def reset(self):
-        self.step = 0
+        self.time_steps = 0
         grid_size = self.gs
 
-        self.snakes = [Snake(random.randint(0, self.gs-1), random.randint(0, self.gs-1), health=self.init_hp, tail_size=self.init_tail_size, perspective=self.perspective) for _ in range(self.num_snakes)]
+        possible_start_positions = set(Point(i, j) for i in range(grid_size) for j in range(grid_size)) - self.walls
+        if len(possible_start_positions) < self.num_snakes:
+             raise ValueError("Not enough valid starting positions for snakes given the wall layout.")
+
+        start_positions = random.sample(list(possible_start_positions), k=self.num_snakes)
+
+        self.snakes = []
+        for i in range(self.num_snakes):
+             start_pos = start_positions[i]
+             self.snakes.append(Snake(start_pos.x, start_pos.y, health=self.init_hp, tail_size=self.init_tail_size, perspective=self.perspective))
+             possible_start_positions.discard(start_pos)
+
         if self.num_teams == 2:
-            #TODO: Implement team logic
             for i, snake in enumerate(self.snakes):
-                if (i+1) % 2 == 0:
-                    snake.colour = Colour.BLUE
+                if (i+1) % 2 == 0: snake.colour = Colour.BLUE
 
-        pos_list = []
-        for i in range(grid_size):
-            for j in range(grid_size):
-                pos_list.append(Point(i, j))
+        self.pos_set = set(Point(i, j) for i in range(grid_size) for j in range(grid_size)) - self.walls
+        for snake in self.snakes:
+             self.pos_set.discard(snake.head)
 
-        self.pos_set = set(pos_list)
         self.fruit_locations = []
         self.set_fruits()
-
-        self.time_steps = 0
-
-
-    # def to_dict(self):
-    #     return {
-    #         'snake': self.snake.to_dict(),
-    #         'fruit': self.fruit_loc.to_dict()
-    #     }
-
-
-    # def from_dict(self, d):
-    #     self.snake = Snake.from_dict(d['snake'])
-    #     self.fruit_location = Point.from_dict(d['fruit'])
 
     def get_snake_locs(self):
         snake_locs = []
@@ -264,7 +238,12 @@ class Env:
         hp_decay = self.decay_rate and self.time_steps % self.decay_rate == 0
 
         snake_states = []
-        for snake, direction in zip(self.snakes, directions):
+        current_snakes = list(self.snakes)
+
+        for i, snake in enumerate(current_snakes):
+            if i >= len(directions): continue
+
+            direction = directions[i]
             snake.apply_direction(direction)
             snake.update(hp_decay)
             snake_condition = SnakeState.OK
@@ -276,39 +255,50 @@ class Env:
                 snake_condition = SnakeState.ATE
             
             snake.shed()
-            if not self._bounds_check(snake.head) or snake.self_collision() or snake.hp <= 0:
+            if not self._bounds_check(snake.head) or \
+               snake.head in self.walls or \
+               snake.self_collision() or \
+               snake.hp <= 0:
                 snake_condition = SnakeState.DED
 
             snake_states.append(snake_condition)
 
         self.snake_locs = self.get_snake_locs()
 
-        # check collision with other snakes
-        if self.num_snakes > 1:
+        indices_to_remove = set()
+        if len(self.snakes) > 1:
             for i, snake in enumerate(self.snakes):
-                locs = self.snake_locs.copy()
-                locs.remove(snake.head)
-                if snake.head in locs:
-                    snake_states[i] = SnakeState.DED
-        
-        dead_snakes = [i+1 for i, state in enumerate(snake_states[1:]) if state == SnakeState.DED]
-        for dead_snake in dead_snakes:
-            self.snakes.pop(dead_snake)
+                 if i in indices_to_remove: continue
 
-        # try:
-        #     self.set_fruits()
-        #     self.snake.tail_size += 1
-        #     out_enum = SnakeState.ATE
-        # except IndexError:
-        #     out_enum = SnakeState.WON
-        # if len(self.fruit_locations) == 0:
-        #     out_enum = SnakeState.WON
+                 other_locs = set()
+                 for j, other_snake in enumerate(self.snakes):
+                      if i == j: continue
+                      other_locs.add(other_snake.head)
+                      other_locs.update(other_snake.tail)
+
+                 if snake.head in other_locs:
+                      snake_states[i] = SnakeState.DED
+                      indices_to_remove.add(i)
+
+        removed_agent_0 = False
+        if indices_to_remove:
+             sorted_indices = sorted(list(indices_to_remove), reverse=True)
+             for index in sorted_indices:
+                  if index == 0: removed_agent_0 = True
+                  if index < len(self.snakes):
+                       self.snakes.pop(index)
+
+        final_state_agent_0 = snake_states[0] if not removed_agent_0 else SnakeState.DED
 
         self.set_fruits()
-        if len(self.fruit_locations) == 0:
-            snake_states[0] = SnakeState.WON
+        if len(self.fruit_locations) == 0 and final_state_agent_0 != SnakeState.DED:
+             final_state_agent_0 = SnakeState.WON
+
         self.time_steps += 1
-        return snake_states[0], self.snakes[0].hp, self.snakes[0].tail_size
+        hp_agent_0 = self.snakes[0].hp if not removed_agent_0 and self.snakes else 0
+        tail_size_agent_0 = self.snakes[0].tail_size if not removed_agent_0 and self.snakes else 0
+
+        return final_state_agent_0, hp_agent_0, tail_size_agent_0
 
     @property
     def fruit_loc(self):
@@ -316,14 +306,15 @@ class Env:
 
     def set_fruits(self):
         snake_locs = self.get_snake_locs()
-        snake_locs.extend(self.fruit_locations)
-        possible_positions = [pos for pos in self.pos_set if pos not in snake_locs]
+        possible_positions = self.pos_set - set(snake_locs) - set(self.fruit_locations)
         diff = self.num_fruits - len(self.fruit_locations)
-        new_locs = sample(list(possible_positions), k=min(diff, len(possible_positions)))
-        self.fruit_locations.extend(new_locs)
+        k = min(diff, len(possible_positions))
+        if k > 0:
+             new_locs = sample(list(possible_positions), k=k)
+             self.fruit_locations.extend(new_locs)
 
     def _bounds_check(self, pos):
-        return pos.x >= 0 and pos.x < self.gs and pos.y >= 0 and pos.y < self.gs
+        return 0 <= pos.x < self.gs and 0 <= pos.y < self.gs
 
     def to_image(self, gradation=True):
         fl = self.fruit_loc

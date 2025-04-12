@@ -106,9 +106,9 @@ You are an expert in Snake RL reward shaping. Analyze the behavior of a Snake RL
 ```
 
 **Task:**
-Based on the **current performance metrics** and potentially informed by the **recent history**, suggest modifications to the reward function JSON below to encourage better performance (more food, longer survival) and exploration (higher coverage, less looping).
+Based on the **current performance metrics** and potentially informed by the **recent history**, suggest modifications to the reward function JSON below to encourage better performance (eat as much food as possible without dying).
 
-**Constraints:**
+**Guidelines:**
 - Be very aggressive and very purposeful in your reward updates.
 - Provide ONLY the updated JSON configuration. Do NOT include explanations or surrounding text.
 

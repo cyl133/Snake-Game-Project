@@ -1,8 +1,8 @@
 {
     "max_steps": 1000,
-    "init_hp": 5,
+    "init_hp": 200,
     "init_tail_size": 4,
-    "num_fruits": 10,
+    "num_fruits": 2,
     "gs": 10,
     "perspective": "third",
     "rewards": {

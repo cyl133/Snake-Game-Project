@@ -6,11 +6,13 @@ import wandb
 from stable_baselines3 import PPO
 from stable_baselines3.common.env_util import make_vec_env
 from stable_baselines3.common.vec_env import SubprocVecEnv
+from stable_baselines3.common.callbacks import BaseCallback
 from wandb.integration.sb3 import WandbCallback
 
-# Assuming gym_env.py and feature_extractor.py are in the same directory or accessible
+# Import our custom components
 from feature_extractor import CustomCNN
 from gym_env import SnakeGameEnv
+from llm_reward_shaper import metrics_collector
 
 # --- Configuration ---
 config_dir = "param_configs"
@@ -19,6 +21,34 @@ model_dir = "models_wandb" # Directory to save wandb models
 
 os.makedirs(log_dir, exist_ok=True)
 os.makedirs(model_dir, exist_ok=True)
+
+
+# --- Custom Callbacks ---
+class RewardShapingCallback(BaseCallback):
+    """
+    Callback for logging dynamic reward metrics to wandb,
+    and periodically exporting reward evolution data to files.
+    """
+    def __init__(self, verbose=0, export_freq=10):
+        super().__init__(verbose)
+        self.export_freq = export_freq
+        self.call_count = 0
+
+    def _on_step(self):
+        # Log current reward configuration to wandb on every step
+        current_config = metrics_collector.current_reward_config
+        for key, value in current_config.items():
+            wandb.log({f"reward/{key}": value}, step=self.num_timesteps)
+            
+        # Export results periodically
+        self.call_count += 1
+        if self.call_count % self.export_freq == 0:
+            export_path = os.path.join(wandb.run.dir, "reward_evolution.json")
+            metrics_collector.export_results(export_path)
+            # Also save a local copy
+            metrics_collector.export_results("reward_evolution_latest.json")
+            
+        return True
 
 
 # --- Main Training Function ---
@@ -33,16 +63,16 @@ def train():
 
     # Initialize wandb
     run = wandb.init(
-        project="snake-rl-project",  # Choose your project name
+        project="snake-rl-llm-rewards",  # New project name for LLM-based rewards
         config={
             # Training Hyperparameters
-            "policy_type": "MultiInputPolicy", # Assuming Dict observation space
+            "policy_type": "CnnPolicy",  # Using CnnPolicy for image input
             "total_timesteps": 5_000_000,
             "learning_rate": 3e-4,
             "n_steps": 128,
-            "batch_size": 2048, # Adjusted based on original script: n_envs * n_steps = 32 * 128 = 4096? Let's keep 2048 for now.
+            "batch_size": 2048,
             "n_epochs": 10,
-            "gamma": 0.90,
+            "gamma": 0.99,
             "gae_lambda": 0.95,
             "clip_range": 0.2,
             "ent_coef": 0.01,
@@ -51,15 +81,20 @@ def train():
             "n_envs": 32,
             "seed": 42,
             "features_dim": 256,
-            # Game Parameters (logged from loaded config, rewards removed)
-            **game_params, # Pass the modified game_params here for logging
+            # Game Parameters
+            **game_params,
+            # Initial Reward Configuration
+            **metrics_collector.current_reward_config,
+            # LLM Shaping Settings
+            "llm_call_frequency": 500,  # Call LLM every N episodes
+            "llm_model": "gpt-3.5-turbo",  # Or other appropriate model
         },
-        sync_tensorboard=True,  # Syncs tensorboard logs
-        monitor_gym=True,       # Automatically log gym environments
-        save_code=True,         # Saves the main script to wandb
+        sync_tensorboard=True,
+        monitor_gym=True,
+        save_code=True,
     )
 
-    config = wandb.config # Use wandb config for hyperparameters
+    config = wandb.config
 
     # Define policy kwargs using the feature extractor
     policy_kwargs = dict(
@@ -67,8 +102,7 @@ def train():
         features_extractor_kwargs=dict(features_dim=config.features_dim)
     )
 
-    # Create vectorized environment using SubprocVecEnv for parallelism
-    # The lambda now uses the game_params dictionary *without* the 'rewards' key
+    # Create vectorized environment
     vec_env = make_vec_env(
         lambda: SnakeGameEnv(**game_params),
         n_envs=config.n_envs,
@@ -99,44 +133,55 @@ def train():
 
     # --- Callbacks ---
     wandb_callback = WandbCallback(
-        gradient_save_freq=10_000, # Save gradients every 10k steps
-        model_save_path=f"{model_dir}/{run.id}", # Save model checkpoints associated with the run
-        model_save_freq=config.n_steps * config.n_envs * 5, # Save model every 5 rollouts
-        log="all", # Log gradients, parameters, and environment stats
+        gradient_save_freq=10_000,
+        model_save_path=f"{model_dir}/{run.id}",
+        model_save_freq=config.n_steps * config.n_envs * 5,
+        log="all",
         verbose=2,
     )
-    # Add other callbacks if needed, e.g., CheckpointCallback, EvalCallback
-    # callbacks = [wandb_callback, other_callback]
-    callbacks = [wandb_callback]
+    
+    # Custom callback for reward shaping logging
+    reward_callback = RewardShapingCallback(verbose=1, export_freq=50)
+    
+    # Combine all callbacks
+    callbacks = [wandb_callback, reward_callback]
 
     # --- Training ---
     # Determine number of training iterations based on total_timesteps
-    # This loop structure allows for potential actions between training phases
-    timesteps_per_iteration = 100_000 # Example: learn in chunks
+    timesteps_per_iteration = 100_000
     iterations = config.total_timesteps // timesteps_per_iteration
 
     try:
         for i in range(iterations):
             print(f"\n--- Training Iteration {i+1}/{iterations} ---")
+            # Log current reward configuration at start of iteration
+            print(f"Current reward config: {metrics_collector.current_reward_config}")
+            
             model.learn(
                 total_timesteps=timesteps_per_iteration,
                 progress_bar=True,
-                tb_log_name=f"PPO_{run.id}", # Log under a run-specific name
-                reset_num_timesteps=False, # Continue timestep count across .learn() calls
+                tb_log_name=f"PPO_LLM_Rewards_{run.id}",
+                reset_num_timesteps=False,
                 callback=callbacks
             )
-            # Optional: Save model manually at the end of each major iteration if needed
-            # model.save(f'{model_dir}/{run.id}/manual_checkpoint_{i+1}')
+            
+            # Save a checkpoint after each iteration
+            model.save(f'{model_dir}/{run.id}/checkpoint_{i+1}')
 
-        # Final save after all iterations
+        # Final save
         model.save(f'{model_dir}/{run.id}/final_model')
 
     except KeyboardInterrupt:
         print("Training interrupted. Saving final model...")
         model.save(f'{model_dir}/{run.id}/interrupted_model')
     finally:
+        # Export final reward evolution data
+        export_path = os.path.join(wandb.run.dir, "reward_evolution_final.json")
+        metrics_collector.export_results(export_path)
+        
         # Close the environment
         vec_env.close()
+        
         # Finish the wandb run
         run.finish()
         print("Training finished and run closed.")

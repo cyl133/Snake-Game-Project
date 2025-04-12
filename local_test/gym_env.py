@@ -4,6 +4,7 @@ from snake_game import Env, SnakeState
 import cv2
 import itertools
 import pygame
+from llm_reward_shaper import metrics_collector
 
 # Epsiode length - Removed, now read from params
 # MAX_STEPS = 1000
@@ -31,8 +32,7 @@ import pygame
 class SnakeGameEnv(gym.Env):
     """
     Custom Environment for Snake Game using Gymnasium API.
-    Reward is sparse: given only at the end of the episode,
-    equal to the total number of fruits eaten.
+    Now with dynamic reward shaping using LLM feedback.
     """
     metadata = {"render_modes": ["human", "rgb_array", "ansi"], "render_fps": 4}
 
@@ -69,6 +69,13 @@ class SnakeGameEnv(gym.Env):
 
         # Initialize episode-specific counters
         self.food_eaten_this_episode = 0
+        self.current_episode_length = 0
+        self.unique_cells_visited = set()
+        self.position_history = []
+        self.wall_proximity_count = 0
+
+        # Set grid size in the metrics collector to match this environment
+        metrics_collector.grid_size = gs
 
         # Define observation space (assuming CNN Policy for now)
         # If using MultiInputPolicy, uncomment the Dict space definition
@@ -116,38 +123,93 @@ class SnakeGameEnv(gym.Env):
         return img_obs
 
     def _get_info(self):
-        # Returns info dictionary, populated at the end of the episode in step()
-        # Can add other persistent info if needed, e.g., distance to fruit
-        # return {"distance_to_fruit": self.env.get_min_dist_to_fruit()}
-        return {} # Keep simple for now, essential info added in step()
+        # Return more detailed info
+        info = {
+            "food_eaten": self.food_eaten_this_episode,
+            "episode_length": self.current_episode_length,
+            "unique_cells_visited": len(self.unique_cells_visited),
+            "max_snake_length": self.env.snakes[0].tail_size + 1 if self.env.snakes else 0,
+        }
+        return info
 
     def reset(self, seed=None, options=None):
         super().reset(seed=seed)
 
         self.env.reset()
-        self.food_eaten_this_episode = 0 # Reset food counter
+        
+        # Reset episode-specific counters
+        self.food_eaten_this_episode = 0
+        self.current_episode_length = 0
+        self.unique_cells_visited = set()
+        self.position_history = []
+        self.wall_proximity_count = 0
+        
+        # Start a new episode in the metrics collector
+        metrics_collector.start_episode()
 
         observation = self._get_obs()
-        info = self._get_info() # Initial info
+        info = self._get_info()
 
         if self.render_mode == "human":
             self._render_frame()
 
         return observation, info
 
-    def step(self, action):
-        # Map action index to game action string if needed
-        game_action = self.action_map[action]
-        actions = [game_action] # Assume first action is for the agent being trained
+    def is_near_wall(self, head_pos, threshold=1):
+        """Check if the snake is near a wall."""
+        x, y = head_pos.x, head_pos.y
+        return x <= threshold or y <= threshold or x >= self.gs - threshold - 1 or y >= self.gs - threshold - 1
+        
+    def is_in_center(self, head_pos):
+        """Check if the snake is in the center region of the grid."""
+        x, y = head_pos.x, head_pos.y
+        center_start = self.gs // 3
+        center_end = self.gs - center_start
+        return center_start <= x < center_end and center_start <= y < center_end
+        
+    def detect_looping(self, window_size=20, min_loop_length=4):
+        """Check if the snake is looping in its recent movements."""
+        if len(self.position_history) < window_size + min_loop_length:
+            return False
+            
+        recent_positions = self.position_history[-window_size:]
+        for pattern_length in range(min_loop_length, window_size // 2 + 1):
+            pattern = recent_positions[-pattern_length:]
+            previous_segment = recent_positions[-(pattern_length*2):-pattern_length]
+            if pattern == previous_segment:
+                return True
+                
+        return False
 
-        # Handle actions for other snakes if multi-agent (currently random)
+    def step(self, action):
+        # Map action index to game action string
+        game_action = self.action_map[action]
+        actions = [game_action]
+
+        # Handle actions for other snakes if multi-agent
         if self.num_snakes > 1:
-            # TODO: Implement proper multi-agent action handling if needed
-            for _ in range(1, len(self.env.snakes)): # Use current number of snakes
+            for _ in range(1, len(self.env.snakes)):
                  actions.append(self.action_map[self.action_space.sample()])
 
         # Update the game state
         snake_condition, hp, tail_size = self.env.update(actions)
+        
+        # Update episode metrics
+        self.current_episode_length += 1
+        
+        # Track snake position for metrics
+        head_pos = self.env.snakes[0].head if self.env.snakes else None
+        if head_pos:
+            pos_tuple = (head_pos.x, head_pos.y)
+            self.position_history.append(pos_tuple)
+            self.unique_cells_visited.add(pos_tuple)
+            
+            # Update the metrics collector with position and action
+            metrics_collector.update_position(head_pos.x, head_pos.y, action)
+            
+            # Check for wall proximity
+            if self.is_near_wall(head_pos):
+                self.wall_proximity_count += 1
 
         # Check if food was eaten in this step
         if snake_condition == SnakeState.ATE:
@@ -155,33 +217,58 @@ class SnakeGameEnv(gym.Env):
 
         # Determine termination conditions
         terminated = snake_condition in [SnakeState.DED, SnakeState.WON]
-        truncated = self.env.time_steps >= self.max_steps # Use >= for clarity
+        truncated = self.env.time_steps >= self.max_steps
 
-        # Calculate reward (only at the end of the episode)
-        reward = 0.0 # No reward during the episode
-        info = {} # Reset info for this step
+        # Determine additional reward factors
+        is_looping = self.detect_looping()
+        is_in_center = head_pos and self.is_in_center(head_pos)
+        near_wall = head_pos and self.is_near_wall(head_pos)
+        unique_cell = len(self.position_history) > 0 and self.position_history.count(self.position_history[-1]) == 1
+        
+        # Calculate reward using the metrics collector
+        reward = metrics_collector.get_reward_for_step(
+            snake_condition, 
+            is_looping=is_looping,
+            in_center=is_in_center,
+            near_wall=near_wall,
+            unique_cell=unique_cell
+        )
+        
+        # Prepare info dict
+        info = self._get_info()
 
+        # Check if episode is ending
         if terminated or truncated:
-            reward = float(self.food_eaten_this_episode) # Final reward = total food eaten
-            # Populate info dictionary for logging/callbacks
-            info["food_eaten"] = self.food_eaten_this_episode
-            info["episode_length"] = self.env.time_steps
-            # Include the terminal observation? SB3 handles this generally.
-            # info["terminal_observation"] = self._get_obs()
+            # Determine death cause
+            death_cause = "timeout"
+            if terminated and snake_condition == SnakeState.DED:
+                # Determine if death was by wall or self-collision
+                if head_pos and (head_pos.x < 0 or head_pos.y < 0 or 
+                               head_pos.x >= self.gs or head_pos.y >= self.gs):
+                    death_cause = "wall"
+                else:
+                    death_cause = "self"
+                    
+            # Record end of episode in metrics collector
+            metrics_collector.end_episode(
+                length=self.current_episode_length,
+                food_eaten=self.food_eaten_this_episode,
+                death_cause=death_cause,
+                max_length=tail_size + 1  # +1 to include head
+            )
 
         observation = self._get_obs()
 
         if self.render_mode == "human":
             self._render_frame()
 
-        # Return according to Gymnasium API: obs, reward, terminated, truncated, info
         return observation, reward, terminated, truncated, info
 
     def render(self):
         if self.render_mode == "rgb_array":
             return self._render_frame()
         elif self.render_mode == "human":
-            self._render_frame() # Frame rendering handled internally now
+            self._render_frame()
         elif self.render_mode == "ansi":
             print(self.env.to_string())
         # Add other modes if needed
@@ -197,8 +284,8 @@ class SnakeGameEnv(gym.Env):
                 self.clock = pygame.time.Clock()
 
             # Get image from game engine
-            im = self.env.to_image(gradation=True) # BGR format from cv2
-            im_rgb = cv2.cvtColor(im, cv2.COLOR_BGR2RGB) # Convert to RGB for pygame
+            im = self.env.to_image(gradation=True)
+            im_rgb = cv2.cvtColor(im, cv2.COLOR_BGR2RGB)
 
             # Resize and create pygame surface
             surf = pygame.surfarray.make_surface(np.rot90(cv2.resize(im_rgb, (640, 640), interpolation=cv2.INTER_NEAREST)))
@@ -210,7 +297,7 @@ class SnakeGameEnv(gym.Env):
 
         elif self.render_mode == "rgb_array":
             im = self.env.to_image(gradation=True)
-            return cv2.resize(im, (640, 640), interpolation=cv2.INTER_NEAREST) # Return numpy array
+            return cv2.resize(im, (640, 640), interpolation=cv2.INTER_NEAREST)
 
     def close(self):
         if self.window is not None:

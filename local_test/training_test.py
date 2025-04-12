@@ -11,6 +11,7 @@ from stable_baselines3.common.vec_env import SubprocVecEnv, DummyVecEnv # Import
 from stable_baselines3.common.callbacks import BaseCallback
 from wandb.integration.sb3 import WandbCallback
 from collections import defaultdict
+from typing import Dict, Optional
 
 # Import custom components
 from feature_extractor import CustomCNN
@@ -31,7 +32,7 @@ os.makedirs(model_dir, exist_ok=True)
 
 # --- LLM Interaction Logic (moved here from MetricsCollector) ---
 
-def format_llm_prompt(aggregated_metrics: Dict, current_config: Dict) -> str:
+def format_llm_prompt(aggregated_metrics: dict, current_config: dict) -> str:
     """Formats the prompt for the Gemini API based on aggregated metrics."""
     if not aggregated_metrics or aggregated_metrics.get("episodes_collected", 0) == 0:
         return ""
@@ -83,7 +84,7 @@ Based ONLY on the aggregated metrics provided, suggest modifications to the rewa
 """
     return prompt.strip()
 
-def call_gemini_api(prompt: str) -> Optional[Dict]:
+def call_gemini_api(prompt: str) -> Optional[dict]:
     """Calls the Gemini API and returns the parsed new reward config or None."""
     if not GOOGLE_API_KEY or GOOGLE_API_KEY == "YOUR_API_KEY_HERE":
         print("[Callback] Google API key not set. Skipping LLM call.")
@@ -223,7 +224,7 @@ class LLMTriggerCallback(BaseCallback):
 
         return True # Continue training
 
-    def _aggregate_metrics(self) -> Dict:
+    def _aggregate_metrics(self) -> dict:
         """Aggregates metrics from the collected episode stats."""
         num_episodes = len(self.collected_episode_stats)
         if num_episodes == 0:

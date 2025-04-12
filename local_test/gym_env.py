@@ -134,14 +134,15 @@ class SnakeGameEnv(gym.Env):
 
     def reset(self, seed=None, options=None):
         super().reset(seed=seed)
-
         self.env.reset()
-        
-        # Reset episode state trackers
-        self._reset_episode_stats()
-        
-        # Start a new episode in the metrics collector
-        metrics_collector.start_episode()
+        self._reset_episode_stats() # Reset internal episode stats
+
+        # Add starting position to history
+        head_pos = self.env.snakes[0].head if self.env.snakes else None
+        if head_pos:
+             pos_tuple = (head_pos.x, head_pos.y)
+             self.position_history.append(pos_tuple)
+             self.unique_cells_visited.add(pos_tuple)
 
         observation = self._get_obs()
         info = self._get_info()
@@ -195,17 +196,27 @@ class SnakeGameEnv(gym.Env):
         
         # Track snake position for metrics
         head_pos = self.env.snakes[0].head if self.env.snakes else None
+        is_looping = False
+        is_in_center_flag = False
+        near_wall_flag = False
+        unique_cell_flag = False
+
         if head_pos:
             pos_tuple = (head_pos.x, head_pos.y)
             self.position_history.append(pos_tuple)
+            unique_cell_flag = pos_tuple not in self.unique_cells_visited
             self.unique_cells_visited.add(pos_tuple)
-            
-            # Update the metrics collector with position and action
-            metrics_collector.update_position(head_pos.x, head_pos.y, action)
-            
-            # Check for wall proximity
-            if self.is_near_wall(head_pos):
-                self.wall_proximity_count += 1
+
+            self.actions_this_episode.append(action)
+            if len(self.actions_this_episode) >= 2 and self.actions_this_episode[-1] != self.actions_this_episode[-2]:
+                self.turns_this_episode += 1
+
+            if self.is_in_center(head_pos):
+                self.center_visits_this_episode += 1
+                is_in_center_flag = True
+
+            is_looping = self.detect_looping()
+            near_wall_flag = self.is_near_wall(head_pos)
 
         # Check if food was eaten in this step
         if snake_condition == SnakeState.ATE:
@@ -215,19 +226,13 @@ class SnakeGameEnv(gym.Env):
         terminated = snake_condition in [SnakeState.DED, SnakeState.WON]
         truncated = self.env.time_steps >= self.max_steps
 
-        # Determine additional reward factors
-        is_looping = self.detect_looping()
-        is_in_center = head_pos and self.is_in_center(head_pos)
-        near_wall = head_pos and self.is_near_wall(head_pos)
-        unique_cell = len(self.position_history) > 0 and self.position_history.count(self.position_history[-1]) == 1
-        
         # Calculate reward using the *global* collector's config
         reward = metrics_collector.get_reward_for_step(
-            snake_condition, 
+            snake_condition,
             is_looping=is_looping,
-            in_center=is_in_center,
-            near_wall=near_wall,
-            unique_cell=unique_cell
+            in_center=is_in_center_flag,
+            near_wall=near_wall_flag,
+            unique_cell=unique_cell_flag
         )
         
         # Prepare info dict
@@ -237,20 +242,41 @@ class SnakeGameEnv(gym.Env):
         if terminated or truncated:
             # Determine death cause
             death_cause = "timeout"
-            if terminated and snake_condition == SnakeState.DED:
-                # Determine if death was by wall or self-collision
-                if head_pos and not (0 <= head_pos.x < self.gs and 0 <= head_pos.y < self.gs):
-                    death_cause = "wall"
-                else:
-                    death_cause = "self"
-                    
-            # Record end of episode in metrics collector
-            metrics_collector.end_episode(
-                length=self.current_episode_length,
-                food_eaten=self.food_eaten_this_episode,
-                death_cause=death_cause,
-                max_length=tail_size + 1  # +1 to include head
-            )
+            if terminated:
+                if snake_condition == SnakeState.DED:
+                    if head_pos and not (0 <= head_pos.x < self.gs and 0 <= head_pos.y < self.gs):
+                        death_cause = "wall"
+                    else:
+                        death_cause = "self"
+                elif snake_condition == SnakeState.WON:
+                    death_cause = "won"
+
+            # Calculate episode action entropy
+            action_entropy = 0.0
+            if self.actions_this_episode:
+                action_counts = defaultdict(int)
+                for act in self.actions_this_episode:
+                    action_counts[act] += 1
+                total_actions = len(self.actions_this_episode)
+                probs = [count / total_actions for count in action_counts.values()]
+                action_entropy = -sum(p * np.log2(p) for p in probs if p > 0)
+
+            info['episode_stats'] = {
+                "length": self.current_episode_length,
+                "food_eaten": self.food_eaten_this_episode,
+                "death_cause": death_cause,
+                "max_length": tail_size + 1,
+                "map_coverage": len(self.unique_cells_visited) / (self.gs * self.gs),
+                "center_visits": self.center_visits_this_episode,
+                "turns": self.turns_this_episode,
+                "looping": is_looping,
+                "action_entropy": action_entropy
+            }
+            info["episode"] = {
+                "r": reward, # Log final step reward? Or cumulative? SB3 usually handles cumulative.
+                "l": self.current_episode_length,
+                "t": time.time() # Monitor wrapper usually adds this
+            }
 
         observation = self._get_obs()
 

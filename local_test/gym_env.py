@@ -4,6 +4,8 @@ from snake_game import Env, SnakeState
 import cv2
 import itertools
 import pygame
+import time # Already imported for info['episode']['t']
+from collections import defaultdict
 from llm_reward_shaper import metrics_collector
 
 # Epsiode length - Removed, now read from params

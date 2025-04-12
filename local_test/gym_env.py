@@ -32,11 +32,11 @@ from llm_reward_shaper import metrics_collector
 class SnakeGameEnv(gym.Env):
     """
     Custom Environment for Snake Game using Gymnasium API.
-    Now with dynamic reward shaping using LLM feedback.
+    Reward is calculated based on the dynamically updated global config.
+    Episode stats are returned in the info dict upon termination/truncation.
     """
     metadata = {"render_modes": ["human", "rgb_array", "ansi"], "render_fps": 4}
 
-    # Updated __init__ signature for clarity and removed unused rewards param from here
     def __init__(self, max_steps=1000, init_hp=100, init_tail_size=4, num_fruits=1, gs=10, perspective='third', num_snakes=1, num_teams=1, render_mode=None):
         super().__init__()
         self.env = Env(grid_size=gs, num_fruits=num_fruits, num_snakes=num_snakes, num_teams=num_teams, init_hp=init_hp, init_tail_size=init_tail_size, perspective=perspective)
@@ -67,15 +67,8 @@ class SnakeGameEnv(gym.Env):
         self.render_mode = render_mode
         self.gs = gs # Grid size
 
-        # Initialize episode-specific counters
-        self.food_eaten_this_episode = 0
-        self.current_episode_length = 0
-        self.unique_cells_visited = set()
-        self.position_history = []
-        self.wall_proximity_count = 0
-
-        # Set grid size in the metrics collector to match this environment
-        metrics_collector.grid_size = gs
+        # Initialize episode state trackers here
+        self._reset_episode_stats()
 
         # Define observation space (assuming CNN Policy for now)
         # If using MultiInputPolicy, uncomment the Dict space definition
@@ -100,6 +93,16 @@ class SnakeGameEnv(gym.Env):
         self.window = None
         self.clock = None
 
+    def _reset_episode_stats(self):
+        """Resets stats tracked within a single episode."""
+        self.food_eaten_this_episode = 0
+        self.current_episode_length = 0
+        self.unique_cells_visited = set()
+        self.position_history = [] # Still needed for loop/state checks
+        self.actions_this_episode = [] # Track actions for entropy/turns
+        self.center_visits_this_episode = 0
+        self.turns_this_episode = 0
+
     def _get_obs(self):
         # Resize image observation
         img_obs = cv2.resize(self.env.to_image(), (self.gs*self.scale, self.gs*self.scale), interpolation=cv2.INTER_NEAREST)
@@ -123,12 +126,9 @@ class SnakeGameEnv(gym.Env):
         return img_obs
 
     def _get_info(self):
-        # Return more detailed info
+        # Base info, additional stats added on termination
         info = {
-            "food_eaten": self.food_eaten_this_episode,
-            "episode_length": self.current_episode_length,
-            "unique_cells_visited": len(self.unique_cells_visited),
-            "max_snake_length": self.env.snakes[0].tail_size + 1 if self.env.snakes else 0,
+            # Add any step-level info if needed, otherwise empty
         }
         return info
 
@@ -137,12 +137,8 @@ class SnakeGameEnv(gym.Env):
 
         self.env.reset()
         
-        # Reset episode-specific counters
-        self.food_eaten_this_episode = 0
-        self.current_episode_length = 0
-        self.unique_cells_visited = set()
-        self.position_history = []
-        self.wall_proximity_count = 0
+        # Reset episode state trackers
+        self._reset_episode_stats()
         
         # Start a new episode in the metrics collector
         metrics_collector.start_episode()
@@ -167,7 +163,7 @@ class SnakeGameEnv(gym.Env):
         center_end = self.gs - center_start
         return center_start <= x < center_end and center_start <= y < center_end
         
-    def detect_looping(self, window_size=20, min_loop_length=4):
+    def detect_looping(self, window_size: int = 20, min_loop_length: int = 4) -> bool:
         """Check if the snake is looping in its recent movements."""
         if len(self.position_history) < window_size + min_loop_length:
             return False
@@ -225,7 +221,7 @@ class SnakeGameEnv(gym.Env):
         near_wall = head_pos and self.is_near_wall(head_pos)
         unique_cell = len(self.position_history) > 0 and self.position_history.count(self.position_history[-1]) == 1
         
-        # Calculate reward using the metrics collector
+        # Calculate reward using the *global* collector's config
         reward = metrics_collector.get_reward_for_step(
             snake_condition, 
             is_looping=is_looping,
@@ -243,8 +239,7 @@ class SnakeGameEnv(gym.Env):
             death_cause = "timeout"
             if terminated and snake_condition == SnakeState.DED:
                 # Determine if death was by wall or self-collision
-                if head_pos and (head_pos.x < 0 or head_pos.y < 0 or 
-                               head_pos.x >= self.gs or head_pos.y >= self.gs):
+                if head_pos and not (0 <= head_pos.x < self.gs and 0 <= head_pos.y < self.gs):
                     death_cause = "wall"
                 else:
                     death_cause = "self"

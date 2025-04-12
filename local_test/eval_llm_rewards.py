@@ -5,7 +5,6 @@ import matplotlib.pyplot as plt
 from stable_baselines3 import PPO
 from stable_baselines3.common.evaluation import evaluate_policy
 from gym_env import SnakeGameEnv
-from llm_reward_shaper import metrics_collector
 
 
 def evaluate_and_visualize(model_path, params_path, num_episodes=10, render=True):
@@ -62,16 +61,17 @@ def evaluate_and_visualize(model_path, params_path, num_episodes=10, render=True
             if render:
                 env.render()
                 
-        # Collect episode statistics
+        # Extract final stats from the nested dict if available
+        final_stats = info.get("episode_stats", {})
         episode_rewards.append(total_reward)
-        episode_lengths.append(steps)
-        foods_eaten.append(info.get("food_eaten", 0))
-        max_snake_lengths.append(info.get("max_snake_length", 0))
+        episode_lengths.append(final_stats.get("length", steps)) # Use final length if available
+        foods_eaten.append(final_stats.get("food_eaten", 0))
+        max_snake_lengths.append(final_stats.get("max_length", 0))
         
-        print(f"  Steps: {steps}")
+        print(f"  Steps: {final_stats.get('length', steps)}")
         print(f"  Reward: {total_reward:.2f}")
-        print(f"  Food eaten: {info.get('food_eaten', 0)}")
-        print(f"  Max snake length: {info.get('max_snake_length', 0)}")
+        print(f"  Food eaten: {final_stats.get('food_eaten', 0)}")
+        print(f"  Max snake length: {final_stats.get('max_length', 0)}")
     
     # Close the environment
     env.close()
@@ -120,75 +120,87 @@ def evaluate_and_visualize(model_path, params_path, num_episodes=10, render=True
         plt.show()
 
 
-def plot_reward_evolution(evolution_file="reward_evolution_latest.json"):
+def plot_reward_evolution(evolution_file="reward_evolution_final.json"):
     """
     Plot how the reward function evolved over time based on LLM suggestions.
-    
-    Args:
-        evolution_file: Path to the JSON file with reward evolution data
+    Uses the new history structure saved by the callback.
     """
+    if not os.path.exists(evolution_file):
+         # Try finding the latest iteration file if final doesn't exist
+         iter_files = sorted([f for f in os.listdir('.') if f.startswith('reward_evolution_iter_') and f.endswith('.json')],
+                             key=lambda x: int(x.split('_')[-1].split('.')[0]), reverse=True)
+         if iter_files:
+              evolution_file = iter_files[0]
+              print(f"Final evolution file not found, using latest iteration: {evolution_file}")
+         else:
+              print(f"Error: Reward evolution file not found: {evolution_file}")
+              return
+
     try:
         with open(evolution_file, 'r') as f:
             data = json.load(f)
     except Exception as e:
-        print(f"Error loading reward evolution data: {e}")
+        print(f"Error loading reward evolution data from {evolution_file}: {e}")
         return
-    
+
     if not data:
         print("No reward evolution data found")
         return
-    
-    # Extract iterations and reward components
-    iterations = [entry["iteration"] for entry in data]
-    
-    # Get all unique reward component keys
+
+    # Extract iterations and reward components from the new structure
+    iterations = [entry["llm_iteration"] for entry in data]
+    global_steps = [entry["global_step"] for entry in data] # Use global step for x-axis
+
+    # Get all unique reward component keys (check both before/after)
     all_keys = set()
     for entry in data:
-        all_keys.update(entry["config"].keys())
-    
-    # Plot each reward component over time
-    plt.figure(figsize=(12, 8))
+        all_keys.update(entry["config_before"].keys())
+        if "config_after" in entry:
+             all_keys.update(entry["config_after"].keys())
+
+    plt.figure(figsize=(14, 8))
     for key in sorted(all_keys):
-        values = [entry["config"].get(key, 0) for entry in data]
-        plt.plot(iterations, values, marker='o', label=key)
-    
-    plt.xlabel('LLM Call Iteration')
+        # Plot value *after* the LLM call for this iteration
+        values_after = [entry.get("config_after", entry["config_before"]).get(key, 0) for entry in data]
+        plt.plot(global_steps, values_after, marker='o', linestyle='-', label=key)
+
+    plt.xlabel('Global Timestep')
     plt.ylabel('Reward Value')
-    plt.title('Evolution of Reward Components')
-    plt.legend()
+    plt.title('Evolution of Reward Components (Value After LLM Call)')
+    plt.legend(loc='center left', bbox_to_anchor=(1, 0.5))
     plt.grid(True)
+    plt.tight_layout(rect=[0, 0, 0.85, 1]) # Adjust layout for legend
     plt.savefig('reward_evolution.png')
     plt.show()
-    
+
     # Plot performance metrics over time
     plt.figure(figsize=(15, 10))
-    
-    # Get all unique metrics keys
     metric_keys = set()
     for entry in data:
-        if "metrics" in entry:
-            metric_keys.update(entry["metrics"].keys())
-    
-    # Select relevant metrics to plot
+        if "metrics_used" in entry:
+            metric_keys.update(entry["metrics_used"].keys())
+
     plot_metrics = [
-        "avg_episode_length", 
-        "avg_food_per_episode", 
-        "max_snake_length", 
-        "map_coverage_pct",
-        "looping_rate_pct"
+        "avg_episode_length", "avg_food_per_episode", "avg_max_snake_length",
+        "avg_map_coverage_pct", "looping_rate_pct", "avg_action_entropy"
     ]
-    
     plot_metrics = [m for m in plot_metrics if m in metric_keys]
-    
+
+    num_plots = len(plot_metrics)
     for i, key in enumerate(plot_metrics):
-        plt.subplot(len(plot_metrics), 1, i+1)
-        values = [entry["metrics"].get(key, 0) if "metrics" in entry else 0 for entry in data]
-        plt.plot(iterations, values, marker='o')
-        plt.ylabel(key)
-        if i == len(plot_metrics) - 1:
-            plt.xlabel('LLM Call Iteration')
+        plt.subplot(num_plots, 1, i+1)
+        # Get metrics that *led* to this LLM call iteration
+        values = [entry["metrics_used"].get(key, 0) if "metrics_used" in entry else 0 for entry in data]
+        plt.plot(global_steps, values, marker='o', linestyle='-')
+        plt.ylabel(key.replace("_", " ").title())
+        if i == num_plots - 1:
+            plt.xlabel('Global Timestep (Metrics Leading to LLM Call)')
+        else:
+             plt.xticks([]) # Hide x-axis labels for upper plots
         plt.grid(True)
-    
+        plt.title(f"Evolution of {key.replace('_', ' ').title()}")
+
+    plt.suptitle("Evolution of Aggregated Metrics Leading to LLM Calls", y=1.02)
     plt.tight_layout()
     plt.savefig('metrics_evolution.png')
     plt.show()
@@ -196,28 +208,27 @@ def plot_reward_evolution(evolution_file="reward_evolution_latest.json"):
 
 if __name__ == "__main__":
     # Default paths - update these as needed
-    MODEL_PATH = "models_wandb/latest/final_model.zip"  # Path to your trained model
+    # Find the latest model automatically
+    models_dir = "models_wandb"
+    latest_model_path = None
+    if os.path.exists(models_dir):
+        all_runs = [os.path.join(models_dir, d) for d in os.listdir(models_dir) if os.path.isdir(os.path.join(models_dir, d))]
+        if all_runs:
+             latest_run = max(all_runs, key=os.path.getmtime)
+             model_files = [os.path.join(latest_run, f) for f in os.listdir(latest_run) if f.endswith(".zip")]
+             if model_files:
+                  latest_model_path = max(model_files, key=os.path.getmtime)
+                  print(f"Found latest model: {latest_model_path}")
+
+    if latest_model_path is None:
+         print("Error: No model found in models_wandb directory.")
+         exit()
+
+    MODEL_PATH = latest_model_path
     PARAMS_PATH = "param_configs/eval.json"
-    
-    # Check if model exists, if not search for most recent one
-    if not os.path.exists(MODEL_PATH):
-        # Look in models_wandb directory for the most recent model file
-        models_dir = "models_wandb"
-        if os.path.exists(models_dir):
-            all_models = []
-            for root, dirs, files in os.walk(models_dir):
-                for file in files:
-                    if file.endswith(".zip"):
-                        all_models.append(os.path.join(root, file))
-            
-            if all_models:
-                # Sort by modification time (most recent first)
-                all_models.sort(key=lambda x: os.path.getmtime(x), reverse=True)
-                MODEL_PATH = all_models[0]
-                print(f"Using most recent model: {MODEL_PATH}")
-    
+
     # First plot the reward and metrics evolution
-    plot_reward_evolution()
-    
+    plot_reward_evolution() # Looks for reward_evolution_final.json or latest iter
+
     # Then evaluate the trained model
-    evaluate_and_visualize(MODEL_PATH, PARAMS_PATH, num_episodes=5, render=True) 
+    evaluate_and_visualize(MODEL_PATH, PARAMS_PATH, num_episodes=10, render=False) # Render = False for quick eval 

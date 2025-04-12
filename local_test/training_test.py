@@ -11,7 +11,7 @@ from stable_baselines3.common.vec_env import SubprocVecEnv, DummyVecEnv # Import
 from stable_baselines3.common.callbacks import BaseCallback
 from wandb.integration.sb3 import WandbCallback
 from collections import defaultdict
-from typing import Dict, Optional
+from typing import Dict, Optional, List
 
 # Import custom components
 from feature_extractor import CustomCNN
@@ -32,38 +32,81 @@ os.makedirs(model_dir, exist_ok=True)
 
 # --- LLM Interaction Logic (moved here from MetricsCollector) ---
 
-def format_llm_prompt(aggregated_metrics: dict, current_config: dict) -> str:
-    """Formats the prompt for the Gemini API based on aggregated metrics."""
+def format_llm_prompt(
+    aggregated_metrics: dict,
+    current_config: dict,
+    history: List[dict],
+    max_history: int = 10
+) -> str:
+    """Formats the prompt for the Gemini API based on aggregated metrics and recent history."""
     if not aggregated_metrics or aggregated_metrics.get("episodes_collected", 0) == 0:
         return ""
 
-    # Use f-string formatting for clarity
-    prompt = f"""
-Analyze the behavior of a Snake RL agent based on these aggregated metrics from the last {aggregated_metrics['episodes_collected']} episodes across all environments:
+    # --- Format History Section ---
+    history_str = "**History (Recent Updates):**\n"
+    if not history:
+        history_str += "No history available yet.\n"
+    else:
+        # Get the last N entries (or fewer if history is short)
+        recent_history = history[-max_history:]
+        for i, entry in enumerate(recent_history):
+            iter_num = entry.get("llm_iteration", i + 1) # Use LLM iteration number
+            step_num = entry.get("global_step", "N/A")
+            metrics = entry.get("metrics_used", {})
+            config_after = entry.get("config_after", entry.get("config_before", {})) # Show config resulting from this iteration
 
-**Performance:**
+            # Select key metrics and config values for brevity
+            hist_metrics_summary = (
+                f"Avg Food: {metrics.get('avg_food_per_episode', 0):.2f}, "
+                f"Avg Len: {metrics.get('avg_episode_length', 0):.2f}, "
+                f"Coverage: {metrics.get('avg_map_coverage_pct', 0):.1f}%, "
+                f"Looping: {metrics.get('looping_rate_pct', 0):.1f}%"
+            )
+            # Select key config values
+            hist_config_summary = (
+                 f"food={config_after.get('food_reward', 0):.2f}, "
+                 f"death={config_after.get('death_penalty', 0):.2f}, "
+                 f"step={config_after.get('step_penalty', 0):.3f}, "
+                 f"expl={config_after.get('exploration_bonus', 0):.2f}, "
+                 f"loop={config_after.get('loop_penalty', 0):.2f}"
+            )
+
+            history_str += (
+                f"Update {iter_num} (Step {step_num}):\n"
+                f"- Metrics -> {hist_metrics_summary}\n"
+                f"- Resulting Config -> {{{hist_config_summary}}}\n"
+            )
+        history_str += "\n" # Add blank line after history
+
+    # --- Format Current Metrics Section ---
+    current_metrics_str = f"""
+**Current Performance (Since Last Update - {aggregated_metrics['episodes_collected']} episodes):**
 - Average Episode Length: {aggregated_metrics['avg_episode_length']:.2f} steps
 - Average Food Eaten: {aggregated_metrics['avg_food_per_episode']:.2f}
 - Average Steps per Food: {aggregated_metrics['avg_steps_per_food']:.2f}
 - Average Max Snake Length: {aggregated_metrics['avg_max_snake_length']:.2f}
-
-**Survival:**
 - Death Causes: Wall ({aggregated_metrics['death_wall_pct']:.2f}%), Self-Collision ({aggregated_metrics['death_self_pct']:.2f}%), Timeout/Won ({aggregated_metrics['death_other_pct']:.2f}%)
-
-**Exploration & Behavior:**
 - Average Map Coverage: {aggregated_metrics['avg_map_coverage_pct']:.2f}%
 - Average Center Visits per Episode: {aggregated_metrics['avg_center_visits']:.2f}
 - Looping Episode Rate: {aggregated_metrics['looping_rate_pct']:.2f}%
 - Average Action Entropy: {aggregated_metrics['avg_action_entropy']:.3f} (Higher means more random actions)
 - Average Turns per Episode: {aggregated_metrics['avg_turns_per_episode']:.2f}
+"""
 
-**Current Reward Function:**
+    # --- Assemble Final Prompt ---
+    prompt = f"""
+Analyze the behavior of a Snake RL agent.
+
+{history_str}
+{current_metrics_str}
+
+**Current Reward Function Before This Update:**
 ```json
 {json.dumps(current_config, indent=2)}
 ```
 
 **Task:**
-Based ONLY on the aggregated metrics provided, suggest modifications to the reward function JSON below to encourage better performance (more food, longer survival) and exploration (higher coverage, less looping).
+Based on the **current performance metrics** and potentially informed by the **recent history**, suggest modifications to the reward function JSON below to encourage better performance (more food, longer survival) and exploration (higher coverage, less looping).
 
 **Constraints:**
 - Keep reward values between -5.0 and 5.0.
@@ -289,18 +332,21 @@ class LLMTriggerCallback(BaseCallback):
 
 
         # Record history before calling LLM
+        # IMPORTANT: Clone aggregated_metrics, otherwise it might get modified if reused
         history_entry = {
             "config_before": current_config,
-            "metrics_used": aggregated_metrics,
+            "metrics_used": aggregated_metrics.copy(),
             "llm_iteration": self.llm_call_count,
             "global_step": self.num_timesteps,
             "total_episodes": self.total_episodes_completed
         }
 
-        # Format prompt and call LLM
-        prompt = format_llm_prompt(aggregated_metrics, current_config)
+        # Format prompt and call LLM, passing the history
+        prompt = format_llm_prompt(aggregated_metrics, current_config, self.reward_config_history) # Pass history here
         if not prompt:
             print("[Callback] Could not format LLM prompt (no metrics?).")
+            # Still append history entry even if prompt fails, to record the metrics state
+            self.reward_config_history.append(history_entry)
             return
 
         new_config_suggestion = call_gemini_api(prompt)
@@ -316,7 +362,7 @@ class LLMTriggerCallback(BaseCallback):
              history_entry["config_after"] = current_config # Config didn't change
              print("[Callback] LLM did not return a valid config update.")
 
-        self.reward_config_history.append(history_entry)
+        self.reward_config_history.append(history_entry) # Append the completed history entry
 
         # Periodically save the history to a file
         save_freq_llm_calls = 5 # Save history every 5 LLM calls

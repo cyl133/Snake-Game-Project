@@ -27,6 +27,10 @@ def train():
     with open(f"{config_dir}/eval.json", "r") as f:
         game_params = json.load(f)
 
+    # Remove the 'rewards' key as it's no longer used by the Env's __init__
+    if 'rewards' in game_params:
+        del game_params['rewards']
+
     # Initialize wandb
     run = wandb.init(
         project="snake-rl-project",  # Choose your project name
@@ -47,8 +51,8 @@ def train():
             "n_envs": 32,
             "seed": 42,
             "features_dim": 256,
-            # Game Parameters (logged from loaded config)
-            **game_params,
+            # Game Parameters (logged from loaded config, rewards removed)
+            **game_params, # Pass the modified game_params here for logging
         },
         sync_tensorboard=True,  # Syncs tensorboard logs
         monitor_gym=True,       # Automatically log gym environments
@@ -64,6 +68,7 @@ def train():
     )
 
     # Create vectorized environment using SubprocVecEnv for parallelism
+    # The lambda now uses the game_params dictionary *without* the 'rewards' key
     vec_env = make_vec_env(
         lambda: SnakeGameEnv(**game_params),
         n_envs=config.n_envs,

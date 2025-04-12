@@ -324,7 +324,9 @@ class LLMTriggerCallback(BaseCallback):
                 print("[Callback] No episode stats collected since last call. Skipping LLM trigger.")
             return
 
-        current_config = metrics_collector.current_reward_config.copy() # Get current config
+        # Get current config from the first environment (all should be the same)
+        base_env = self.model.get_env().envs[0].unwrapped
+        current_config = base_env.reward_config.copy()
 
         # Log aggregated metrics to WandB
         wandb.log({f"llm_metrics/{k}": v for k, v in aggregated_metrics.items()}, step=self.num_timesteps)
@@ -351,13 +353,17 @@ class LLMTriggerCallback(BaseCallback):
 
         new_config_suggestion = call_gemini_api(prompt)
 
-        # Update global config if LLM provided a valid suggestion
+        # Update the reward config in all environments
         if new_config_suggestion and isinstance(new_config_suggestion, dict):
-            metrics_collector.update_config(new_config_suggestion)
-            history_entry["config_after"] = metrics_collector.current_reward_config.copy() # Record updated config
-            # Log the *new* config values immediately after update
-            log_dict_after = {f"reward_config/{k}": v for k, v in metrics_collector.current_reward_config.items()}
-            wandb.log(log_dict_after, step=self.num_timesteps)
+            vec_env = self.model.get_env()
+            for env_idx in range(len(vec_env.envs)):
+                # Use remotes to update config in subprocesses
+                if hasattr(vec_env, 'remotes'):
+                    vec_env.remotes[env_idx].send(('set_reward_config', new_config_suggestion))
+                    response = vec_env.remotes[env_idx].recv()
+                else:
+                    # Direct update for DummyVecEnv
+                    vec_env.envs[env_idx].unwrapped.reward_config.update(new_config_suggestion)
         else:
              history_entry["config_after"] = current_config # Config didn't change
              print("[Callback] LLM did not return a valid config update.")

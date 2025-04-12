@@ -6,12 +6,43 @@ import os
 from snake_game import SnakeState
 from typing import Dict
 
-# --- Configuration (API Key remains, but frequencies move to callback) ---
-# WARNING: Hardcoding API keys is insecure. Use environment variables for production.
-GOOGLE_API_KEY = "AIzaSyANDTYyGq3EgFwctwRjlddZvqQhIfEnGH0" # Directly using the provided key (INSECURE)
+# Default reward configuration - to be passed to environments directly
+DEFAULT_REWARD_CONFIG = {
+    "food_reward": 20.0,
+    "death_penalty": -10.0,
+    "step_penalty": -0.4,
+    "center_bonus": 0.0,
+    "loop_penalty": 0.0,
+    "wall_follow_penalty": 0.0,
+    "exploration_bonus": 0.0
+}
+
+def get_reward_for_step(config: Dict, snake_condition: SnakeState, is_looping: bool = False,
+                       in_center: bool = False, near_wall: bool = False,
+                       unique_cell: bool = False) -> float:
+    """Calculate reward for a step based on provided config."""
+    reward = 0.0
+    if snake_condition == SnakeState.ATE:
+        reward += config["food_reward"]
+    elif snake_condition == SnakeState.DED:
+        reward += config["death_penalty"]
+    else:  # SnakeState.OK
+        reward += config["step_penalty"]
+
+    if is_looping:
+        reward += config["loop_penalty"]
+    if in_center:
+        reward += config["center_bonus"]
+    if near_wall:
+        reward += config["wall_follow_penalty"]
+    if unique_cell:
+        reward += config["exploration_bonus"]
+    return reward
+
+# API configuration
+GOOGLE_API_KEY = "AIzaSyANDTYyGq3EgFwctwRjlddZvqQhIfEnGH0"
 LLM_API_URL_BASE = "https://generativelanguage.googleapis.com/v1beta/models/"
-# LLM_MODEL = "gemini-pro" # Incorrect name
-LLM_MODEL = "gemini-2.5-pro-exp-03-25" # Using 1.5 Pro latest - can change if needed
+LLM_MODEL = "gemini-2.5-pro-exp-03-25"
 LLM_API_URL = f"{LLM_API_URL_BASE}{LLM_MODEL}:generateContent?key={GOOGLE_API_KEY}"
 
 class GlobalRewardConfig:

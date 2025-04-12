@@ -298,10 +298,18 @@ Based ONLY on the metrics provided, suggest modifications to the reward function
         # Skip if API key is missing
         if not GOOGLE_API_KEY or GOOGLE_API_KEY == "YOUR_API_KEY_HERE":
              print("Google API key not set. Skipping LLM call.")
-             print(f"Prompt that would be sent:\n{prompt}\n")
+             # --- DEBUG PRINT: Show prompt even when skipping API call ---
+             print("\n--- LLM PROMPT (SKIPPED) ---")
+             print(prompt)
+             print("---------------------------\n")
              # Reset metrics for the next cycle even if LLM is skipped
              self.reset_metrics()
              return
+        
+        # --- DEBUG PRINT: Show the prompt being sent ---
+        print("\n--- LLM PROMPT ---")
+        print(prompt)
+        print("------------------\n")
         
         try:
             # Prepare Gemini API request data
@@ -322,35 +330,47 @@ Based ONLY on the metrics provided, suggest modifications to the reward function
             
             print(f"Sending request to Gemini API: {LLM_API_URL}")
             response = requests.post(LLM_API_URL, headers=headers, json=data)
+
+            # --- DEBUG PRINT: Show the raw response status and JSON ---
+            print(f"\n--- LLM RAW RESPONSE (Status: {response.status_code}) ---")
+            try:
+                response_json = response.json()
+                print(json.dumps(response_json, indent=2)) # Pretty print the JSON
+            except json.JSONDecodeError:
+                print("Could not decode JSON response:")
+                print(response.text)
+            print("------------------------------------\n")
+
             response.raise_for_status() # Raise an exception for bad status codes (4xx or 5xx)
-            
-            response_json = response.json()
-            
+
             # Extract the response text from Gemini structure
             if 'candidates' in response_json and len(response_json['candidates']) > 0:
                  # Handle potential variations in response structure
                  candidate = response_json['candidates'][0]
                  if 'content' in candidate and 'parts' in candidate['content'] and len(candidate['content']['parts']) > 0:
                       llm_response_text = candidate['content']['parts'][0]['text']
-                      print(f"LLM Response Text:\n{llm_response_text}\n")
+                      # Current print statement for extracted text is already good
+                      print(f"LLM Extracted Response Text:\n{llm_response_text}\n")
                       self.update_reward_config_from_llm(llm_response_text)
                  else:
                       print("Warning: Unexpected response structure from Gemini.")
-                      print(f"Full Response: {response_json}")
-            
+                      # print(f"Full Response: {response_json}") # Already printed above
+
             else:
                  print("Warning: No candidates found in Gemini response.")
-                 print(f"Full Response: {response_json}")
+                 # print(f"Full Response: {response_json}") # Already printed above
                  # Handle cases where the response might be blocked due to safety settings
                  if 'promptFeedback' in response_json and 'blockReason' in response_json['promptFeedback']:
                        print(f"Prompt blocked. Reason: {response_json['promptFeedback']['blockReason']}")
-            
+
         except requests.exceptions.RequestException as e:
             print(f"Error calling Gemini API: {e}")
             # Optionally, print response body if available
             if e.response is not None:
-                 print(f"Response status code: {e.response.status_code}")
-                 print(f"Response body: {e.response.text}")
+                 # Raw response already printed above in the success case debug block
+                 pass
+                 # print(f"Response status code: {e.response.status_code}")
+                 # print(f"Response body: {e.response.text}")
         except Exception as e:
              print(f"An unexpected error occurred during LLM call: {e}")
         

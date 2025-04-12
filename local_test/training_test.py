@@ -95,7 +95,7 @@ def format_llm_prompt(
 
     # --- Assemble Final Prompt ---
     prompt = f"""
-Analyze the behavior of a Snake RL agent.
+You are an expert in Snake RL reward shaping. Analyze the behavior of a Snake RL agent. 
 
 {history_str}
 {current_metrics_str}
@@ -109,7 +109,7 @@ Analyze the behavior of a Snake RL agent.
 Based on the **current performance metrics** and potentially informed by the **recent history**, suggest modifications to the reward function JSON below to encourage better performance (more food, longer survival) and exploration (higher coverage, less looping).
 
 **Constraints:**
-- Keep reward values between -5.0 and 5.0.
+- Be very aggressive and very purposeful in your reward updates.
 - Provide ONLY the updated JSON configuration. Do NOT include explanations or surrounding text.
 
 **Provide the updated reward JSON here:**

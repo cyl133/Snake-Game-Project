@@ -170,42 +170,24 @@ class RewardUpdateCallback(BaseCallback):
         return True
         
     def _switch_environment(self):
-        """Switch to a new environment with updated rewards without recreating the model"""
+        """Apply reward updates to environments directly"""
         if not self.game_params:
-            # Load game parameters first time
             with open(f"{CONFIG_DIR}/eval.json", "r") as f:
                 self.game_params = json.load(f)
                 if 'rewards' in self.game_params:
                     del self.game_params['rewards']
         
-        # Following the pattern from the example code:
-        # 1. Save the current model
-        temp_save_path = f"temp_model_{self.num_timesteps}.zip"
-        self.model.save(temp_save_path)
-        print(f"Saved temporary model to {temp_save_path}")
+        print("Updating rewards in all environments...")
+        # Get the VecEnv from the model
+        vec_env = self.model.get_env()
         
-        # 2. Create new environment with updated rewards
-        print("Creating new environment with updated rewards...")
-        new_env = make_vec_env(
-            lambda: SnakeGameEnv(**self.game_params, reward_config=self.current_rewards.copy()),
-            n_envs=N_ENVS,
-            seed=42
-        )
-        
-        # 3. Load model with new environment but keep parameters
-        # This avoids the error with categorical distribution
-        self.model = self.model.__class__.load(
-            temp_save_path,
-            env=new_env,
-            device=self.model.device
-        )
-        print(f"Loaded model with new environment")
-        
-        # 4. Clean up temp file
-        try:
-            os.remove(temp_save_path)
-        except:
-            pass
+        # Loop through each environment in the vector and update rewards
+        for i in range(N_ENVS):
+            # For DummyVecEnv, directly access the unwrapped environment
+            env = vec_env.envs[i].unwrapped
+            # Update the reward config in-place
+            env.reward_config = self.current_rewards.copy()
+            print(f"Updated rewards in environment {i}")
         
     def _aggregate_metrics(self):
         """Aggregate stats from completed episodes"""

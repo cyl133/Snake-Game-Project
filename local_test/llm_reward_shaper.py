@@ -11,7 +11,7 @@ from typing import Dict
 GOOGLE_API_KEY = "AIzaSyANDTYyGq3EgFwctwRjlddZvqQhIfEnGH0" # Directly using the provided key (INSECURE)
 LLM_API_URL_BASE = "https://generativelanguage.googleapis.com/v1beta/models/"
 # LLM_MODEL = "gemini-pro" # Incorrect name
-LLM_MODEL = "gemini-2.0-flash" # Using 1.5 Pro latest - can change if needed
+LLM_MODEL = "gemini-2.5-pro-exp-03-25" # Using 1.5 Pro latest - can change if needed
 LLM_API_URL = f"{LLM_API_URL_BASE}{LLM_MODEL}:generateContent?key={GOOGLE_API_KEY}"
 
 class GlobalRewardConfig:

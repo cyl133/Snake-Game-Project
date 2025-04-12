@@ -15,11 +15,13 @@ GOOGLE_API_KEY = "AIzaSyANDTYyGq3EgFwctwRjlddZvqQhIfEnGH0" # Directly using the 
 
 # Use the Gemini Pro endpoint
 LLM_API_URL_BASE = "https://generativelanguage.googleapis.com/v1beta/models/"
-LLM_MODEL = "gemini-pro" # Use Gemini Pro model
+# LLM_MODEL = "gemini-pro" # Incorrect model name for v1beta API
+# LLM_MODEL = "gemini-1.5-pro-latest" # Use the correct identifier for Gemini 1.5 Pro
+LLM_MODEL = "gemini-2.0-flash" # Using the exact model from the curl example
 LLM_API_URL = f"{LLM_API_URL_BASE}{LLM_MODEL}:generateContent?key={GOOGLE_API_KEY}"
 
 METRICS_COLLECTION_FREQUENCY = 10  # Collect metrics every N episodes
-LLM_CALL_FREQUENCY = 500  # Call LLM every M episodes
+LLM_CALL_FREQUENCY = 5000  # Call LLM every M episodes - Keep lowered for testing
 GRID_SIZE = 10  # Default grid size, should match your env
 
 class MetricsCollector:

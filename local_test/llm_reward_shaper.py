@@ -41,8 +41,6 @@ class GlobalRewardConfig:
             if key in self.current_reward_config:
                 try:
                     value = float(value)
-                    # Clamp values (using range from last prompt example)
-                    value = max(min(value, 5.0), -5.0)
                     if self.current_reward_config[key] != value:
                         self.current_reward_config[key] = value
                         updated_keys += 1

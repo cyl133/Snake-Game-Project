@@ -22,9 +22,9 @@ class GlobalRewardConfig:
     def __init__(self):
         # Default reward configuration
         self.current_reward_config = {
-            "food_reward": 1.0,
-            "death_penalty": -20.0,
-            "step_penalty": -0.01,
+            "food_reward": 20.0,
+            "death_penalty": -10.0,
+            "step_penalty": -0.4,
             "center_bonus": 0.0,
             "loop_penalty": 0.0,
             "wall_follow_penalty": 0.0,

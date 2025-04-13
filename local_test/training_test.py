@@ -20,7 +20,7 @@ from llm_reward_shaper import LLM_MODEL, LLM_API_URL, GOOGLE_API_KEY, get_reward
 CONFIG_DIR = "param_configs"
 LOG_DIR = "logs_wandb"
 MODEL_DIR = "models_wandb"
-LLM_CALL_FREQUENCY = 20000  # Episodes before LLM update
+LLM_CALL_FREQUENCY = 30000  # Episodes before LLM update
 METRICS_LOG_FREQUENCY = 100
 N_ENVS = 128  # Number of environments
 USE_LLM = True  # SET THIS TO FALSE TO DISABLE LLM COMPLETELY

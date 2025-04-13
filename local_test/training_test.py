@@ -21,8 +21,8 @@ CONFIG_DIR = "param_configs"
 LOG_DIR = "logs_wandb"
 MODEL_DIR = "models_wandb"
 LLM_CALL_FREQUENCY = 10000  # Episodes before LLM update
-N_ENVS = 32  # Number of environments
-USE_LLM = False  # SET THIS TO FALSE TO DISABLE LLM COMPLETELY
+N_ENVS = 128  # Number of environments
+USE_LLM = True  # SET THIS TO FALSE TO DISABLE LLM COMPLETELY
 
 os.makedirs(LOG_DIR, exist_ok=True)
 os.makedirs(MODEL_DIR, exist_ok=True)

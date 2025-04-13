@@ -46,7 +46,7 @@ def get_reward_for_step(config: Dict, snake_condition: SnakeState, is_looping: b
     return reward
 
 # API configuration
-GOOGLE_API_KEY = "AIzaSyANDTYyGq3EgFwctwRjlddZvqQhIfEnGH0"
+GOOGLE_API_KEY = os.environ.get("GOOGLE_API_KEY", "")
 LLM_API_URL_BASE = "https://generativelanguage.googleapis.com/v1beta/models/"
 LLM_MODEL = "gemini-2.0-flash"
 LLM_API_URL = f"{LLM_API_URL_BASE}{LLM_MODEL}:generateContent?key={GOOGLE_API_KEY}"

@@ -112,7 +112,7 @@ Positive values encourage behaviors, negative values discourage them.
    - Low map coverage → Increase exploration_bonus, decrease wall_follow_penalty
 
 3. **Common Patterns:**
-   - If avg_episode_length < 100: Agent dies too quickly; reduce death_penalty, reduce step_penalty
+   - If avg_episode_length < 100: Agent dies too quickly; increase death_penalty, increase step_penalty
    - If food_eaten < 1.0: Agent isn't finding food; increase food_reward
    - If looping_rate > 30%: Agent is stuck in loops; add loop_penalty
    - If death_wall_pct > 50%: Agent hits walls too often; add wall_avoidance_bonus
@@ -138,9 +138,6 @@ You are an expert in reinforcement learning reward shaping. Your task is to opti
 
 **Reward Shaping Principles:**
 {reward_shaping_guide}
-
-**Reward Scaling Guidelines:**
-{reward_scaling_guide}
 
 **Current Reward Function:**
 ```json

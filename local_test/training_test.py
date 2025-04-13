@@ -357,7 +357,7 @@ def train():
             "policy_type": "CnnPolicy",
             "total_timesteps": 5_000_000,
             "n_envs": N_ENVS,
-            "learning_rate": 9e-4,
+            "learning_rate": 5e-4,
             "n_steps": 128,
             "batch_size": 2048,
             "game_params": game_params,
@@ -390,7 +390,7 @@ def train():
         verbose=1,
         device="cuda" if th.cuda.is_available() else "cpu",
         tensorboard_log=LOG_DIR,
-        learning_rate=3e-4,
+        learning_rate=5e-4,
         n_steps=128,
         batch_size=2048
     )

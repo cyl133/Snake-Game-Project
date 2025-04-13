@@ -28,7 +28,7 @@ USE_LLM = True  # SET THIS TO FALSE TO DISABLE LLM COMPLETELY
 os.makedirs(LOG_DIR, exist_ok=True)
 os.makedirs(MODEL_DIR, exist_ok=True)
 
-def format_llm_prompt(metrics, current_config, history=None, max_history=100):
+def format_llm_prompt(metrics, current_config, history=None, max_history=10):
     if not metrics or metrics.get("episodes_collected", 0) == 0:
         return ""
     
@@ -45,12 +45,21 @@ def format_llm_prompt(metrics, current_config, history=None, max_history=100):
             changes = []
             for key in new_r:
                 if key in old_r and old_r[key] != new_r[key]:
-                    changes.append(f"{key}: {old_r[key]} → {new_r[key]}")
+                    changes.append(f"{key}: {old_r[key]:.2f} → {new_r[key]:.2f}")
             
-            # Include performance before the change
-            history_str += f"Update {i+1}:\n"
+            # Include a broader range of performance metrics from that time
+            prior_performance_summary = (
+                f"Avg Food: {hist_metrics.get('avg_food_per_episode', 0):.1f}, "
+                f"Avg Length: {hist_metrics.get('avg_episode_length', 0):.1f}, "
+                f"Success Rate: {hist_metrics.get('success_rate_pct', 0):.1f}%, "
+                f"Wall Deaths: {hist_metrics.get('death_wall_pct', 0):.1f}%, "
+                f"Self Deaths: {hist_metrics.get('death_self_pct', 0):.1f}%, "
+                f"Looping: {hist_metrics.get('looping_rate_pct', 0):.1f}%"
+            )
+
+            history_str += f"Update {i+1} (Step {entry.get('step', 'N/A')}):\n"
             history_str += f"- Changes: {', '.join(changes)}\n"
-            history_str += f"- Prior performance: {hist_metrics['avg_food_per_episode']:.1f} food, {hist_metrics['avg_episode_length']:.1f} steps\n"
+            history_str += f"- Prior Performance: {prior_performance_summary}\n"
     
     metrics_str = f"""
 **Current Performance ({metrics['episodes_collected']} episodes):**
@@ -116,29 +125,34 @@ Positive values encourage behaviors, negative values discourage them.
 """
 
     prompt = f"""
-**Task:**
-Analyze the metrics and suggest precise reward adjustments. Focus on the RELATIVE PROPORTIONS between rewards rather than absolute values. Keep all rewards within the recommended ranges. Make incremental changes (±10-50% maximum per parameter) rather than 
-drastic ones. Consider trade-offs between exploration and exploitation.
+You are an expert in reinforcement learning reward shaping. Your task is to optimize a reward function for a Snake game agent to maximize food collection and survival time.
 
-For each change you make, consider its effect relative to other rewards. For example, if you increase food_reward, consider whether to adjust step_penalty proportionally.
+**Recent History:**
+{history_str if history else "No history available."}
 
-Provide ONLY the updated JSON configuration.
+**Current Metrics:**
+{metrics_str}
 
+**How Rewards Are Calculated:**
 {rewards_explanation}
 
+**Reward Shaping Principles:**
 {reward_shaping_guide}
+
+**Reward Scaling Guidelines:**
+{reward_scaling_guide}
 
 **Current Reward Function:**
 ```json
 {json.dumps(current_config, indent=2)}
 ```
 
-**Current Metrics:**
-{metrics_str}
+**Task:**
+Analyze the metrics and suggest precise reward adjustments. Focus on the RELATIVE PROPORTIONS between rewards rather than absolute values. Keep all rewards within the recommended ranges. Make incremental changes (±10-50% maximum per parameter) rather than drastic ones. Consider trade-offs between exploration and exploitation.
 
-**Recent History:**
-{history_str}
+For each change you make, consider its effect relative to other rewards. For example, if you increase food_reward, consider whether to adjust step_penalty proportionally.
 
+Provide ONLY the updated JSON configuration.
 """
     return prompt.strip()
 
@@ -343,7 +357,7 @@ def train():
             "policy_type": "CnnPolicy",
             "total_timesteps": 5_000_000,
             "n_envs": N_ENVS,
-            "learning_rate": 3e-4,
+            "learning_rate": 9e-4,
             "n_steps": 128,
             "batch_size": 2048,
             "game_params": game_params,

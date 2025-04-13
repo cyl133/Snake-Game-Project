@@ -20,7 +20,7 @@ from llm_reward_shaper import LLM_MODEL, LLM_API_URL, GOOGLE_API_KEY, get_reward
 CONFIG_DIR = "param_configs"
 LOG_DIR = "logs_wandb"
 MODEL_DIR = "models_wandb"
-LLM_CALL_FREQUENCY = 20000  # Episodes before LLM update
+LLM_CALL_FREQUENCY = 100000  # Episodes before LLM update
 METRICS_LOG_FREQUENCY = 100
 N_ENVS = 128  # Number of environments
 USE_LLM = True  # SET THIS TO FALSE TO DISABLE LLM COMPLETELY
@@ -72,11 +72,58 @@ def format_llm_prompt(metrics, current_config, history=None, max_history=10):
 - Center Area Visits: {metrics['avg_center_visits']:.2f} per episode
 """
 
+    # Add detailed explanation of how rewards are calculated
+    rewards_explanation = """
+**How Rewards Are Calculated:**
+- `food_reward`: Added when the snake eats food
+- `death_penalty`: Applied when the snake dies (collides with wall or itself)
+- `step_penalty`: Small penalty applied on every step (encourages efficiency)
+- `center_bonus`: Bonus when snake visits the center area of the map
+- `loop_penalty`: Penalty when snake shows looping behavior (revisiting same path)
+- `wall_follow_penalty`: Penalty when snake stays near walls
+- `exploration_bonus`: Reward for visiting new cells (unexplored areas)
+- `consecutive_food_bonus`: Additional bonus for eating food in succession (multiplied by count)
+- `distance_reduction_reward`: Reward for moving closer to food
+- `wall_avoidance_bonus`: Reward for staying away from walls
+
+Positive values encourage behaviors, negative values discourage them.
+"""
+
+    # Add RL principles and reward shaping guidance
+    reward_shaping_guide = """
+**Reward Shaping Principles:**
+
+1. **Balance & Scale:** Keep rewards proportional. Food reward should generally be 20-100x the step penalty.
+
+2. **Metric Analysis Guidelines:**
+   - Low food eaten + short episodes → Increase food_reward, add distance_reduction_reward
+   - High wall death % → Increase wall_avoidance_bonus, increase death_penalty
+   - High self-collision % → Add loop_penalty, increase exploration_bonus
+   - Low efficiency (high steps per food) → Adjust step_penalty, increase distance_reduction_reward
+   - Low map coverage → Increase exploration_bonus, decrease wall_follow_penalty
+
+3. **Common Patterns:**
+   - If avg_episode_length < 100: Agent dies too quickly; reduce death_penalty, reduce step_penalty
+   - If food_eaten < 1.0: Agent isn't finding food; increase food_reward
+   - If looping_rate > 30%: Agent is stuck in loops; add loop_penalty
+   - If death_wall_pct > 50%: Agent hits walls too often; add wall_avoidance_bonus
+
+4. **Avoid Common Mistakes:**
+   - Don't make step_penalty too harsh (-0.05 to -0.5 is reasonable)
+   - Don't make death_penalty too extreme (generally -5 to -30)
+   - If introducing a new reward component, start small (0.1-1.0)
+   - Ensure food_reward (10-50) is significantly higher than any penalty
+"""
+
     prompt = f"""
-You are an expert in Snake RL reward shaping. Analyze the behavior of a Snake RL agent and suggest optimal reward configurations to maximize food eating efficiency, number of food eaten and steps survived.
+You are an expert in reinforcement learning reward shaping. Your task is to optimize a reward function for a Snake game agent to maximize food collection and survival time.
 
 {history_str}
 {metrics_str}
+
+{rewards_explanation}
+
+{reward_shaping_guide}
 
 **Current Reward Function:**
 ```json
@@ -84,28 +131,12 @@ You are an expert in Snake RL reward shaping. Analyze the behavior of a Snake RL
 ```
 
 **Task:**
-Based on the metrics and history, suggest improvements to the reward function. For example (be creative):
-1. If the agent isn't eating food, increase food_reward or add distance_reduction_reward
-2. If dying too often, adjust death_penalty or add wall_avoidance_bonus
-3. If looping behavior is high, increase loop_penalty
-4. If efficiency is poor, adjust step_penalty
+Analyze the metrics and suggest precise reward adjustments. Focus on the RELATIVE PROPORTIONS between rewards rather than absolute values. Keep all rewards within the recommended ranges. Make incremental changes (±10-50% maximum per parameter) rather than 
+drastic ones. Consider trade-offs between exploration and exploitation.
+
+For each change you make, consider its effect relative to other rewards. For example, if you increase food_reward, consider whether to adjust step_penalty proportionally.
 
 Provide ONLY the updated JSON configuration.
-
-```json
-{{
-  "food_reward": {current_config.get('food_reward', 1.0)},
-  "death_penalty": {current_config.get('death_penalty', 0)},
-  "step_penalty": {current_config.get('step_penalty', 0)},
-  "center_bonus": {current_config.get('center_bonus', 0.0)},
-  "loop_penalty": {current_config.get('loop_penalty', 0.0)},
-  "wall_follow_penalty": {current_config.get('wall_follow_penalty', 0.0)},
-  "exploration_bonus": {current_config.get('exploration_bonus', 0.0)},
-  "consecutive_food_bonus": {current_config.get('consecutive_food_bonus', 0.0)},
-  "distance_reduction_reward": {current_config.get('distance_reduction_reward', 0.0)},
-  "wall_avoidance_bonus": {current_config.get('wall_avoidance_bonus', 0.0)}
-}}
-```
 """
     return prompt.strip()
 

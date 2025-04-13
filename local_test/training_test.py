@@ -20,8 +20,9 @@ from llm_reward_shaper import DEFAULT_REWARD_CONFIG, LLM_MODEL, LLM_API_URL, GOO
 CONFIG_DIR = "param_configs"
 LOG_DIR = "logs_wandb"
 MODEL_DIR = "models_wandb"
-LLM_CALL_FREQUENCY = 500000  # Episodes before LLM update
+LLM_CALL_FREQUENCY = 10000  # Episodes before LLM update
 N_ENVS = 32  # Number of environments
+USE_LLM = False  # SET THIS TO FALSE TO DISABLE LLM COMPLETELY
 
 os.makedirs(LOG_DIR, exist_ok=True)
 os.makedirs(MODEL_DIR, exist_ok=True)
@@ -109,7 +110,7 @@ def call_llm(prompt):
     return None
 
 class RewardUpdateCallback(BaseCallback):
-    def __init__(self, check_freq=LLM_CALL_FREQUENCY, verbose=1):
+    def __init__(self, check_freq=LLM_CALL_FREQUENCY, verbose=1, use_llm=USE_LLM):
         super().__init__(verbose)
         self.check_freq = check_freq
         self.episode_count = 0
@@ -117,6 +118,8 @@ class RewardUpdateCallback(BaseCallback):
         self.reward_history = []
         self.current_rewards = DEFAULT_REWARD_CONFIG.copy()
         self.game_params = None
+        self.use_llm = use_llm
+        print(f"RewardUpdateCallback initialized with LLM {'ENABLED' if use_llm else 'DISABLED'}")
         
     def _on_step(self):
         # Check for episode completions
@@ -125,9 +128,9 @@ class RewardUpdateCallback(BaseCallback):
                 self.episode_count += 1
                 self.stats.append(self.locals["infos"][i]["episode_stats"])
                 
-                # Check if it's time for an LLM update
+                # Check if it's time for metrics aggregation (with or without LLM)
                 if self.episode_count % self.check_freq == 0:
-                    print(f"\n--- Episode {self.episode_count}: Updating Rewards ---")
+                    print(f"\n--- Episode {self.episode_count}: Collecting Metrics ---")
                     metrics = self._aggregate_metrics()
                     
                     # Log metrics to wandb
@@ -135,34 +138,40 @@ class RewardUpdateCallback(BaseCallback):
                         wandb.log({f"metrics/{k}": v for k, v in metrics.items()}, 
                                  step=self.num_timesteps)
                     
-                    # Call LLM for reward update
-                    prompt = format_llm_prompt(metrics, self.current_rewards, self.reward_history)
-                    new_rewards = call_llm(prompt)
-                    
-                    if new_rewards:
-                        print(f"New rewards: {new_rewards}")
+                    # Only call LLM if enabled
+                    if self.use_llm:
+                        print("LLM reward updating is ENABLED. Requesting reward update...")
+                        prompt = format_llm_prompt(metrics, self.current_rewards, self.reward_history)
+                        new_rewards = call_llm(prompt)
                         
-                        # Save history
-                        self.reward_history.append({
-                            "step": self.num_timesteps,
-                            "episode": self.episode_count,
-                            "metrics": metrics,
-                            "old_rewards": self.current_rewards.copy(),
-                            "new_rewards": new_rewards
-                        })
-                        
-                        # Update current rewards
-                        self.current_rewards.update(new_rewards)
-                        
-                        # Log new rewards to wandb
+                        if new_rewards:
+                            print(f"New rewards from LLM: {new_rewards}")
+                            
+                            # Save history
+                            self.reward_history.append({
+                                "step": self.num_timesteps,
+                                "episode": self.episode_count,
+                                "metrics": metrics,
+                                "old_rewards": self.current_rewards.copy(),
+                                "new_rewards": new_rewards
+                            })
+                            
+                            # Update current rewards
+                            self.current_rewards.update(new_rewards)
+                            
+                            # Log new rewards to wandb
+                            if wandb.run:
+                                wandb.log({f"rewards/{k}": v for k, v in self.current_rewards.items()},
+                                        step=self.num_timesteps)
+                                
+                            # Update environment rewards
+                            self._switch_environment()
+                    else:
+                        print("LLM reward updating is DISABLED. Using fixed rewards.")
+                        # Still log the fixed rewards for consistency
                         if wandb.run:
                             wandb.log({f"rewards/{k}": v for k, v in self.current_rewards.items()},
                                     step=self.num_timesteps)
-                            
-                        # Instead of updating the existing environment,
-                        # we'll save the model, create a new environment,
-                        # and reload - following the pattern from the example
-                        self._switch_environment()
                     
                     # Reset stats collection
                     self.stats = []
@@ -171,23 +180,16 @@ class RewardUpdateCallback(BaseCallback):
         
     def _switch_environment(self):
         """Apply reward updates to environments directly"""
-        if not self.game_params:
-            with open(f"{CONFIG_DIR}/eval.json", "r") as f:
-                self.game_params = json.load(f)
-                if 'rewards' in self.game_params:
-                    del self.game_params['rewards']
-        
         print("Updating rewards in all environments...")
-        # Get the VecEnv from the model
         vec_env = self.model.get_env()
         
-        # Loop through each environment in the vector and update rewards
-        for i in range(N_ENVS):
-            # For DummyVecEnv, directly access the unwrapped environment
+        # Loop through each environment to update rewards
+        for i in range(len(vec_env.envs)):
             env = vec_env.envs[i].unwrapped
             # Update the reward config in-place
             env.reward_config = self.current_rewards.copy()
-            print(f"Updated rewards in environment {i}")
+        
+        print(f"Updated rewards in all environments: {self.current_rewards}")
         
     def _aggregate_metrics(self):
         """Aggregate stats from completed episodes"""
@@ -238,9 +240,9 @@ def train():
         if 'rewards' in game_params:
             del game_params['rewards']
     
-    # Initialize wandb
+    # Initialize wandb with LLM flag
     run = wandb.init(
-        project="snake-rl-simple",
+        project="snake-rl-simple", 
         config={
             "policy_type": "CnnPolicy",
             "total_timesteps": 5_000_000,
@@ -250,7 +252,8 @@ def train():
             "batch_size": 2048,
             "game_params": game_params,
             "initial_rewards": DEFAULT_REWARD_CONFIG,
-            "llm_freq": LLM_CALL_FREQUENCY
+            "llm_freq": LLM_CALL_FREQUENCY,
+            "use_llm": USE_LLM  # Log whether LLM is being used
         },
         sync_tensorboard=True,
         monitor_gym=True,
@@ -291,7 +294,7 @@ def train():
         log="all"
     )
     
-    reward_callback = RewardUpdateCallback(check_freq=LLM_CALL_FREQUENCY)
+    reward_callback = RewardUpdateCallback(check_freq=LLM_CALL_FREQUENCY, use_llm=USE_LLM)
     callbacks = [wandb_callback, reward_callback]
     
     # Train

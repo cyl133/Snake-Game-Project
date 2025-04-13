@@ -52,8 +52,7 @@ class GlobalRewardConfig:
     """
     def __init__(self):
         # Default reward configuration
-        self.current_reward_config = DEFAULT_REWARD_CONFIG
-        # History is now managed by the callback/main process
+        self.current_reward_config = DEFAULT_REWARD_CONFIG.copy()
         # self.reward_config_history = []
         print(f"Initialized GlobalRewardConfig with: {self.current_reward_config}")
 

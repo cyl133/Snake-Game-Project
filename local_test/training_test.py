@@ -20,7 +20,7 @@ from llm_reward_shaper import LLM_MODEL, LLM_API_URL, GOOGLE_API_KEY, get_reward
 CONFIG_DIR = "param_configs"
 LOG_DIR = "logs_wandb"
 MODEL_DIR = "models_wandb"
-LLM_CALL_FREQUENCY = 100000  # Episodes before LLM update
+LLM_CALL_FREQUENCY = 20000  # Episodes before LLM update
 METRICS_LOG_FREQUENCY = 100
 N_ENVS = 128  # Number of environments
 USE_LLM = True  # SET THIS TO FALSE TO DISABLE LLM COMPLETELY
@@ -28,7 +28,7 @@ USE_LLM = True  # SET THIS TO FALSE TO DISABLE LLM COMPLETELY
 os.makedirs(LOG_DIR, exist_ok=True)
 os.makedirs(MODEL_DIR, exist_ok=True)
 
-def format_llm_prompt(metrics, current_config, history=None, max_history=20):
+def format_llm_prompt(metrics, current_config, history=None, max_history=100):
     if not metrics or metrics.get("episodes_collected", 0) == 0:
         return ""
     
@@ -116,10 +116,13 @@ Positive values encourage behaviors, negative values discourage them.
 """
 
     prompt = f"""
-You are an expert in reinforcement learning reward shaping. Your task is to optimize a reward function for a Snake game agent to maximize food collection and survival time.
+**Task:**
+Analyze the metrics and suggest precise reward adjustments. Focus on the RELATIVE PROPORTIONS between rewards rather than absolute values. Keep all rewards within the recommended ranges. Make incremental changes (±10-50% maximum per parameter) rather than 
+drastic ones. Consider trade-offs between exploration and exploitation.
 
-{history_str}
-{metrics_str}
+For each change you make, consider its effect relative to other rewards. For example, if you increase food_reward, consider whether to adjust step_penalty proportionally.
+
+Provide ONLY the updated JSON configuration.
 
 {rewards_explanation}
 
@@ -130,13 +133,12 @@ You are an expert in reinforcement learning reward shaping. Your task is to opti
 {json.dumps(current_config, indent=2)}
 ```
 
-**Task:**
-Analyze the metrics and suggest precise reward adjustments. Focus on the RELATIVE PROPORTIONS between rewards rather than absolute values. Keep all rewards within the recommended ranges. Make incremental changes (±10-50% maximum per parameter) rather than 
-drastic ones. Consider trade-offs between exploration and exploitation.
+**Current Metrics:**
+{metrics_str}
 
-For each change you make, consider its effect relative to other rewards. For example, if you increase food_reward, consider whether to adjust step_penalty proportionally.
+**Recent History:**
+{history_str}
 
-Provide ONLY the updated JSON configuration.
 """
     return prompt.strip()
 

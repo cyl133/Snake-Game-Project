@@ -21,7 +21,7 @@ CONFIG_DIR = "param_configs"
 LOG_DIR = "logs_wandb"
 MODEL_DIR = "models_wandb"
 LLM_CALL_FREQUENCY = 30000  # Episodes before LLM update
-METRICS_LOG_FREQUENCY = 100
+METRICS_LOG_FREQUENCY = 512
 N_ENVS = 128  # Number of environments
 USE_LLM = False  # SET THIS TO FALSE TO DISABLE LLM COMPLETELY
 
@@ -355,8 +355,8 @@ def train():
             "total_timesteps": 5_000_000,
             "n_envs": N_ENVS,
             "learning_rate": 3e-4,
-            "n_steps": 512,
-            "batch_size": 8192,
+            "n_steps": 128,
+            "batch_size": 2048,
             "game_params": game_params,
             "initial_rewards": reward_config,
             "llm_freq": LLM_CALL_FREQUENCY,
@@ -388,8 +388,8 @@ def train():
         device="cuda" if th.cuda.is_available() else "cpu",
         tensorboard_log=LOG_DIR,
         learning_rate=3e-4,
-        n_steps=512,
-        batch_size=8192
+        n_steps=128,
+        batch_size=2048
     )
     
     # Create callbacks

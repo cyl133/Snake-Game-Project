@@ -108,10 +108,13 @@ class SnakeGameEnv(gym.Env):
         self.food_eaten_this_episode = 0
         self.current_episode_length = 0
         self.unique_cells_visited = set()
-        self.position_history = [] # Still needed for loop/state checks
-        self.actions_this_episode = [] # Track actions for entropy/turns
+        self.position_history = []
+        self.actions_this_episode = []
         self.center_visits_this_episode = 0
         self.turns_this_episode = 0
+        self.consecutive_food = 0
+        self.prev_food_distance = None
+        self.looping_detected = False
 
     def _get_obs(self):
         # Resize image observation
@@ -246,6 +249,28 @@ class SnakeGameEnv(gym.Env):
             unique_cell=unique_cell_flag
         )
         
+        # Track distance to food for potential distance-based rewards
+        if 'distance_reduction_reward' in self.reward_config and self.reward_config['distance_reduction_reward'] > 0:
+            old_dist = getattr(self, 'prev_food_distance', None)
+            new_dist = self.env.get_min_dist_to_fruit() 
+            
+            if old_dist is not None and new_dist < old_dist:
+                reward += self.reward_config['distance_reduction_reward']
+            
+            self.prev_food_distance = new_dist
+
+        # Track consecutive food eaten
+        if snake_condition == SnakeState.ATE:
+            self.consecutive_food = getattr(self, 'consecutive_food', 0) + 1
+            if 'consecutive_food_bonus' in self.reward_config:
+                reward += self.reward_config['consecutive_food_bonus'] * self.consecutive_food
+        else:
+            self.consecutive_food = 0
+
+        # Add wall avoidance bonus
+        if 'wall_avoidance_bonus' in self.reward_config and not near_wall_flag:
+            reward += self.reward_config['wall_avoidance_bonus']
+
         # Prepare info dict
         info = self._get_info()
 

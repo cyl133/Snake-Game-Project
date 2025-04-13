@@ -14,7 +14,10 @@ DEFAULT_REWARD_CONFIG = {
     "center_bonus": 0.0,
     "loop_penalty": 0.0,
     "wall_follow_penalty": 0.0,
-    "exploration_bonus": 0.0
+    "exploration_bonus": 0.0,
+    "consecutive_food_bonus": 0.0,
+    "distance_reduction_reward": 0.0,
+    "wall_avoidance_bonus": 0.0
 }
 
 def get_reward_for_step(config: Dict, snake_condition: SnakeState, is_looping: bool = False,
@@ -23,20 +26,23 @@ def get_reward_for_step(config: Dict, snake_condition: SnakeState, is_looping: b
     """Calculate reward for a step based on provided config."""
     reward = 0.0
     if snake_condition == SnakeState.ATE:
-        reward += config["food_reward"]
+        reward += config.get("food_reward", 0.0)
     elif snake_condition == SnakeState.DED:
-        reward += config["death_penalty"]
+        reward += config.get("death_penalty", 0.0)
     else:  # SnakeState.OK
-        reward += config["step_penalty"]
+        reward += config.get("step_penalty", 0.0)
 
     if is_looping:
-        reward += config["loop_penalty"]
+        reward += config.get("loop_penalty", 0.0)
     if in_center:
-        reward += config["center_bonus"]
+        reward += config.get("center_bonus", 0.0)
     if near_wall:
-        reward += config["wall_follow_penalty"]
+        reward += config.get("wall_follow_penalty", 0.0)
     if unique_cell:
-        reward += config["exploration_bonus"]
+        reward += config.get("exploration_bonus", 0.0)
+    
+    # Note: Other components like consecutive_food_bonus, distance_reduction_reward,
+    # and wall_avoidance_bonus are handled directly in the gym_env.py step method
     return reward
 
 # API configuration

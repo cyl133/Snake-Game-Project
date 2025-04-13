@@ -20,7 +20,7 @@ from llm_reward_shaper import LLM_MODEL, LLM_API_URL, GOOGLE_API_KEY, get_reward
 CONFIG_DIR = "param_configs"
 LOG_DIR = "logs_wandb"
 MODEL_DIR = "models_wandb"
-LLM_CALL_FREQUENCY = 5000  # Episodes before LLM update
+LLM_CALL_FREQUENCY = 20000  # Episodes before LLM update
 METRICS_LOG_FREQUENCY = 100
 N_ENVS = 128  # Number of environments
 USE_LLM = True  # SET THIS TO FALSE TO DISABLE LLM COMPLETELY
@@ -28,7 +28,7 @@ USE_LLM = True  # SET THIS TO FALSE TO DISABLE LLM COMPLETELY
 os.makedirs(LOG_DIR, exist_ok=True)
 os.makedirs(MODEL_DIR, exist_ok=True)
 
-def format_llm_prompt(metrics, current_config, history=None, max_history=3):
+def format_llm_prompt(metrics, current_config, history=None, max_history=10):
     if not metrics or metrics.get("episodes_collected", 0) == 0:
         return ""
     
@@ -57,12 +57,23 @@ def format_llm_prompt(metrics, current_config, history=None, max_history=3):
 - Average Episode Length: {metrics['avg_episode_length']:.2f} steps
 - Average Food Eaten: {metrics['avg_food_per_episode']:.2f}
 - Average Max Snake Length: {metrics['avg_max_snake_length']:.2f}
-- Death Causes: Wall ({metrics['death_wall_pct']:.2f}%), Self ({metrics['death_self_pct']:.2f}%)
+- Success Rate: {metrics['success_rate_pct']:.2f}% (episodes with ≥1 food)
+- Efficiency: {metrics['efficiency_steps_per_food']:.2f} steps per food
+
+**Death Analysis:**
+- Wall collisions: {metrics['death_wall_pct']:.2f}%
+- Self collisions: {metrics['death_self_pct']:.2f}%
+- Timeouts: {metrics['death_timeout_pct']:.2f}%
+
+**Behavior Analysis:**
 - Map Coverage: {metrics['avg_map_coverage_pct']:.2f}%
+- Looping Behavior: {metrics['looping_rate_pct']:.2f}%
+- Average Turns: {metrics['avg_turns_per_episode']:.2f} per episode
+- Center Area Visits: {metrics['avg_center_visits']:.2f} per episode
 """
 
     prompt = f"""
-You are an expert in Snake RL reward shaping. Analyze the behavior of a Snake RL agent using past history of reward updates and the corresponding performance metrics, as well as the current reward function. Come out with purposeful reward changes to allow the agent to eat as many food as possible while not dying.
+You are an expert in Snake RL reward shaping. Analyze the behavior of a Snake RL agent and suggest optimal reward configurations to maximize food eating efficiency, number of food eaten and steps survived.
 
 {history_str}
 {metrics_str}
@@ -73,7 +84,12 @@ You are an expert in Snake RL reward shaping. Analyze the behavior of a Snake RL
 ```
 
 **Task:**
-Based on the current performance metrics, suggest modifications to the reward function JSON.
+Based on the metrics and history, suggest improvements to the reward function. For example (be creative):
+1. If the agent isn't eating food, increase food_reward or add distance_reduction_reward
+2. If dying too often, adjust death_penalty or add wall_avoidance_bonus
+3. If looping behavior is high, increase loop_penalty
+4. If efficiency is poor, adjust step_penalty
+
 Provide ONLY the updated JSON configuration.
 
 ```json
@@ -84,7 +100,10 @@ Provide ONLY the updated JSON configuration.
   "center_bonus": {current_config.get('center_bonus', 0.0)},
   "loop_penalty": {current_config.get('loop_penalty', 0.0)},
   "wall_follow_penalty": {current_config.get('wall_follow_penalty', 0.0)},
-  "exploration_bonus": {current_config.get('exploration_bonus', 0.0)}
+  "exploration_bonus": {current_config.get('exploration_bonus', 0.0)},
+  "consecutive_food_bonus": {current_config.get('consecutive_food_bonus', 0.0)},
+  "distance_reduction_reward": {current_config.get('distance_reduction_reward', 0.0)},
+  "wall_avoidance_bonus": {current_config.get('wall_avoidance_bonus', 0.0)}
 }}
 ```
 """
@@ -219,28 +238,48 @@ class RewardUpdateCallback(BaseCallback):
             
         metrics = defaultdict(list)
         death_causes = defaultdict(int)
+        total_episodes = len(self.stats)
         
         for stat in self.stats:
+            # Existing metrics
             metrics["length"].append(stat["length"])
             metrics["food_eaten"].append(stat["food_eaten"])
             metrics["max_length"].append(stat["max_length"])
-            metrics["map_coverage"].append(stat["map_coverage"])
-            death_causes[stat["death_cause"]] += 1
+            metrics["map_coverage"].append(stat.get("map_coverage", 0))
+            death_causes[stat.get("death_cause", "unknown")] += 1
+            
+            # NEW METRICS
+            metrics["looping_detected"].append(1 if stat.get("looping", False) else 0)
+            metrics["turns"].append(stat.get("turns", 0))
+            metrics["center_visits"].append(stat.get("center_visits", 0))
+            
+            # Calculate efficiency metrics
+            if stat["food_eaten"] > 0:
+                metrics["steps_per_food"].append(stat["length"] / stat["food_eaten"])
+            
+            # Track episodes with at least one food
+            metrics["success_rate"].append(1 if stat["food_eaten"] > 0 else 0)
         
         # Calculate aggregates
         result = {
-            "episodes_collected": len(self.stats),
+            "episodes_collected": total_episodes,
             "avg_episode_length": np.mean(metrics["length"]),
             "avg_food_per_episode": np.mean(metrics["food_eaten"]),
             "avg_max_snake_length": np.mean(metrics["max_length"]),
-            "avg_map_coverage_pct": np.mean(metrics["map_coverage"]) * 100
+            "avg_map_coverage_pct": np.mean(metrics["map_coverage"]) * 100 if metrics["map_coverage"] else 0,
+            
+            # NEW AGGREGATED METRICS
+            "avg_turns_per_episode": np.mean(metrics["turns"]) if metrics["turns"] else 0,
+            "avg_center_visits": np.mean(metrics["center_visits"]) if metrics["center_visits"] else 0,
+            "looping_rate_pct": np.mean(metrics["looping_detected"]) * 100 if metrics["looping_detected"] else 0,
+            "success_rate_pct": np.mean(metrics["success_rate"]) * 100 if metrics["success_rate"] else 0,
+            "efficiency_steps_per_food": np.mean(metrics["steps_per_food"]) if metrics["steps_per_food"] else float('inf'),
         }
         
         # Calculate death percentages
-        total = len(self.stats)
-        result["death_wall_pct"] = death_causes.get("wall", 0) / total * 100
-        result["death_self_pct"] = death_causes.get("self", 0) / total * 100
-        result["death_other_pct"] = (total - death_causes.get("wall", 0) - death_causes.get("self", 0)) / total * 100
+        result["death_wall_pct"] = death_causes.get("wall", 0) / total_episodes * 100
+        result["death_self_pct"] = death_causes.get("self", 0) / total_episodes * 100
+        result["death_timeout_pct"] = death_causes.get("timeout", 0) / total_episodes * 100
         
         return result
         

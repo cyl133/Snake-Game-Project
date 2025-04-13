@@ -6,14 +6,14 @@
     "gs": 10,
     "perspective": "third",
     "rewards": {
-        "food_reward": 20.0,
+        "food_reward": 0,
         "death_penalty": -10.0,
         "step_penalty": -0.1,
         "center_bonus": 0.0,
         "loop_penalty": 0.0,
         "wall_follow_penalty": 0.0,
         "exploration_bonus": 0.0,
-        "consecutive_food_bonus": 10.0,
+        "consecutive_food_bonus": 0.0,
         "distance_reduction_reward": 1.0,
         "wall_avoidance_bonus": 0.1
     },

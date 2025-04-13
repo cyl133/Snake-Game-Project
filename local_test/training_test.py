@@ -62,7 +62,7 @@ def format_llm_prompt(metrics, current_config, history=None, max_history=3):
 """
 
     prompt = f"""
-You are an expert in Snake RL reward shaping. Analyze the behavior of a Snake RL agent.
+You are an expert in Snake RL reward shaping. Analyze the behavior of a Snake RL agent using past history of reward updates and the corresponding performance metrics, as well as the current reward function. Come out with purposeful reward changes to allow the agent to eat as many food as possible while not dying.
 
 {history_str}
 {metrics_str}

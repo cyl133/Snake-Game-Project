@@ -64,9 +64,9 @@ Provide ONLY the updated JSON configuration.
 
 ```json
 {{
-  "food_reward": {current_config.get('food_reward', 20.0)},
-  "death_penalty": {current_config.get('death_penalty', -10.0)},
-  "step_penalty": {current_config.get('step_penalty', -0.4)},
+  "food_reward": {current_config.get('food_reward', 1.0)},
+  "death_penalty": {current_config.get('death_penalty', 0)},
+  "step_penalty": {current_config.get('step_penalty', 0)},
   "center_bonus": {current_config.get('center_bonus', 0.0)},
   "loop_penalty": {current_config.get('loop_penalty', 0.0)},
   "wall_follow_penalty": {current_config.get('wall_follow_penalty', 0.0)},

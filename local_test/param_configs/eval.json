@@ -6,10 +6,10 @@
     "gs": 10,
     "perspective": "third",
     "rewards": {
-        "SnakeState.OK": -0.4,
-        "SnakeState.ATE": 20,
-        "SnakeState.DED": -10,
-        "SnakeState.WON": 1
+        "SnakeState.OK": 0,
+        "SnakeState.ATE": 1,
+        "SnakeState.DED": 0,
+        "SnakeState.WON": 0
     },
     "num_snakes": 1,
     "num_teams": 1

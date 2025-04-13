@@ -19,13 +19,30 @@ action_map = {
             3: 'right'
         }
 
+# Load parameters
 with open("param_configs/eval.json", "r") as f:
     game_params = json.load(f)
+    # Convert old format to new format
+    if 'rewards' in game_params:
+        # Create reward_config from the old rewards format
+        reward_config = {
+            "food_reward": game_params['rewards'].get('SnakeState.ATE', 21.0),
+            "death_penalty": game_params['rewards'].get('SnakeState.DED', -10.0),
+            "step_penalty": game_params['rewards'].get('SnakeState.OK', -0.4),
+            "center_bonus": 0.0,
+            "loop_penalty": 0.0,
+            "wall_follow_penalty": 0.0,
+            "exploration_bonus": 0.0
+        }
+        # Remove the old rewards field
+        del game_params['rewards']
+        # Add new reward_config
+        game_params['reward_config'] = reward_config
 
 # Load the trained model
-model = PPO.load("models/ppo_snake4.3_2.zip")
+model = PPO.load("/Users/chengyueli/Snake-Game-Project-1/models/model.zip")
 
-# Create a new environment instance for evaluation
+# Create a new environment instance for evaluation with the reward_config
 env = Monitor(SnakeGameEnv(**game_params))
 
 # Evaluate the model

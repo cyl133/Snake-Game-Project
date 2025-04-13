@@ -1,6 +1,6 @@
 {
     "max_steps": 1000,
-    "init_hp": 200,
+    "init_hp": 40,
     "init_tail_size": 4,
     "num_fruits": 5,
     "gs": 10,

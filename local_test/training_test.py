@@ -20,24 +20,37 @@ from llm_reward_shaper import LLM_MODEL, LLM_API_URL, GOOGLE_API_KEY, get_reward
 CONFIG_DIR = "param_configs"
 LOG_DIR = "logs_wandb"
 MODEL_DIR = "models_wandb"
-LLM_CALL_FREQUENCY = 10000  # Episodes before LLM update
+LLM_CALL_FREQUENCY = 5000  # Episodes before LLM update
+METRICS_LOG_FREQUENCY = 100
 N_ENVS = 128  # Number of environments
 USE_LLM = True  # SET THIS TO FALSE TO DISABLE LLM COMPLETELY
 
 os.makedirs(LOG_DIR, exist_ok=True)
 os.makedirs(MODEL_DIR, exist_ok=True)
 
-def format_llm_prompt(metrics, current_config, history=None, max_history=10):
-    # Same prompt formatting as before
+def format_llm_prompt(metrics, current_config, history=None, max_history=3):
     if not metrics or metrics.get("episodes_collected", 0) == 0:
         return ""
     
-    # Format history and metrics sections - simplified for brevity
+    # Format history with specific changes and results
     history_str = "**History (Recent Updates):**\n"
     if history:
         recent_history = history[-max_history:]
         for i, entry in enumerate(recent_history):
-            history_str += f"Update {i+1}: Modified rewards based on performance\n"
+            old_r = entry["old_rewards"]
+            new_r = entry["new_rewards"]
+            hist_metrics = entry["metrics"]
+            
+            # Show what changed
+            changes = []
+            for key in new_r:
+                if key in old_r and old_r[key] != new_r[key]:
+                    changes.append(f"{key}: {old_r[key]} → {new_r[key]}")
+            
+            # Include performance before the change
+            history_str += f"Update {i+1}:\n"
+            history_str += f"- Changes: {', '.join(changes)}\n"
+            history_str += f"- Prior performance: {hist_metrics['avg_food_per_episode']:.1f} food, {hist_metrics['avg_episode_length']:.1f} steps\n"
     
     metrics_str = f"""
 **Current Performance ({metrics['episodes_collected']} episodes):**
@@ -110,9 +123,10 @@ def call_llm(prompt):
     return None
 
 class RewardUpdateCallback(BaseCallback):
-    def __init__(self, check_freq=LLM_CALL_FREQUENCY, verbose=1, use_llm=USE_LLM, initial_rewards=None):
+    def __init__(self, check_freq=LLM_CALL_FREQUENCY, log_freq=100, verbose=1, use_llm=USE_LLM, initial_rewards=None):
         super().__init__(verbose)
         self.check_freq = check_freq
+        self.log_freq = log_freq  # More frequent logging
         self.episode_count = 0
         self.stats = []
         self.reward_history = []
@@ -128,7 +142,14 @@ class RewardUpdateCallback(BaseCallback):
                 self.episode_count += 1
                 self.stats.append(self.locals["infos"][i]["episode_stats"])
                 
-                # Check if it's time for metrics aggregation (with or without LLM)
+                # Log basic metrics more frequently
+                if self.episode_count % self.log_freq == 0:
+                    metrics = self._aggregate_metrics()
+                    if wandb.run:
+                        wandb.log({f"metrics/{k}": v for k, v in metrics.items()}, 
+                                 step=self.num_timesteps)
+                
+                # Full metrics collection and potential LLM call less frequently
                 if self.episode_count % self.check_freq == 0:
                     print(f"\n--- Episode {self.episode_count}: Collecting Metrics ---")
                     metrics = self._aggregate_metrics()
@@ -297,7 +318,8 @@ def train():
     )
     
     reward_callback = RewardUpdateCallback(
-        check_freq=LLM_CALL_FREQUENCY, 
+        check_freq=LLM_CALL_FREQUENCY,
+        log_freq=METRICS_LOG_FREQUENCY,
         use_llm=USE_LLM,
         initial_rewards=reward_config
     )

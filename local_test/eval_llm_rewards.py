@@ -21,6 +21,11 @@ def evaluate_and_visualize(model_path, params_path, num_episodes=10, render=True
     with open(params_path, "r") as f:
         game_params = json.load(f)
     
+    # Keep rewards from eval.json
+    reward_config = game_params.get("rewards")
+    if not reward_config:
+        raise ValueError("No reward configuration found in eval.json")
+    
     # Remove the 'rewards' key as it's no longer used by the Env's __init__
     if 'rewards' in game_params:
         del game_params['rewards']
@@ -34,7 +39,7 @@ def evaluate_and_visualize(model_path, params_path, num_episodes=10, render=True
         return
     
     # Create a test environment
-    env = SnakeGameEnv(**game_params, render_mode="human" if render else None)
+    env = SnakeGameEnv(**game_params, reward_config=reward_config, render_mode="human" if render else None)
     
     # Storage for metrics
     episode_rewards = []

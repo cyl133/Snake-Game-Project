@@ -6,7 +6,7 @@ import itertools
 import pygame
 import time # Already imported for info['episode']['t']
 from collections import defaultdict
-from llm_reward_shaper import metrics_collector, DEFAULT_REWARD_CONFIG, get_reward_for_step
+from llm_reward_shaper import metrics_collector, get_reward_for_step
 
 # Epsiode length - Removed, now read from params
 # MAX_STEPS = 1000
@@ -39,7 +39,7 @@ class SnakeGameEnv(gym.Env):
     """
     metadata = {"render_modes": ["human", "rgb_array", "ansi"], "render_fps": 4}
 
-    def __init__(self, max_steps=1000, init_hp=100, init_tail_size=4, num_fruits=1, gs=10, perspective='third', num_snakes=1, num_teams=1, render_mode=None, reward_config=None):
+    def __init__(self, max_steps=1000, init_hp=100, init_tail_size=4, num_fruits=1, gs=10, perspective='third', num_snakes=1, num_teams=1, render_mode=None, reward_config=None, rewards=None):
         super().__init__()
         self.env = Env(grid_size=gs, num_fruits=num_fruits, num_snakes=num_snakes, num_teams=num_teams, init_hp=init_hp, init_tail_size=init_tail_size, perspective=perspective)
 
@@ -69,8 +69,13 @@ class SnakeGameEnv(gym.Env):
         self.render_mode = render_mode
         self.gs = gs # Grid size
 
-        # Store reward configuration locally
-        self.reward_config = reward_config if reward_config is not None else DEFAULT_REWARD_CONFIG.copy()
+        # Store reward configuration from either reward_config or rewards parameter
+        if reward_config is not None:
+            self.reward_config = reward_config
+        elif rewards is not None:
+            self.reward_config = rewards
+        else:
+            raise ValueError("No reward configuration provided")
 
         # Initialize episode state trackers here
         self._reset_episode_stats()

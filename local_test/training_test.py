@@ -14,7 +14,7 @@ from typing import Dict, List, Optional
 # Import custom components
 from feature_extractor import CustomCNN
 from gym_env import SnakeGameEnv
-from llm_reward_shaper import DEFAULT_REWARD_CONFIG, LLM_MODEL, LLM_API_URL, GOOGLE_API_KEY
+from llm_reward_shaper import LLM_MODEL, LLM_API_URL, GOOGLE_API_KEY, get_reward_for_step
 
 # --- Configuration ---
 CONFIG_DIR = "param_configs"
@@ -110,13 +110,13 @@ def call_llm(prompt):
     return None
 
 class RewardUpdateCallback(BaseCallback):
-    def __init__(self, check_freq=LLM_CALL_FREQUENCY, verbose=1, use_llm=USE_LLM):
+    def __init__(self, check_freq=LLM_CALL_FREQUENCY, verbose=1, use_llm=USE_LLM, initial_rewards=None):
         super().__init__(verbose)
         self.check_freq = check_freq
         self.episode_count = 0
         self.stats = []
         self.reward_history = []
-        self.current_rewards = DEFAULT_REWARD_CONFIG.copy()
+        self.current_rewards = initial_rewards.copy()
         self.game_params = None
         self.use_llm = use_llm
         print(f"RewardUpdateCallback initialized with LLM {'ENABLED' if use_llm else 'DISABLED'}")
@@ -237,8 +237,11 @@ def train():
     # Load game parameters
     with open(f"{CONFIG_DIR}/eval.json", "r") as f:
         game_params = json.load(f)
-        if 'rewards' in game_params:
-            del game_params['rewards']
+    
+    # Extract reward config from eval.json
+    reward_config = game_params.get("rewards")
+    if not reward_config:
+        raise ValueError("No reward configuration found in eval.json")
     
     # Initialize wandb with LLM flag
     run = wandb.init(
@@ -251,9 +254,9 @@ def train():
             "n_steps": 128,
             "batch_size": 2048,
             "game_params": game_params,
-            "initial_rewards": DEFAULT_REWARD_CONFIG,
+            "initial_rewards": reward_config,
             "llm_freq": LLM_CALL_FREQUENCY,
-            "use_llm": USE_LLM  # Log whether LLM is being used
+            "use_llm": USE_LLM
         },
         sync_tensorboard=True,
         monitor_gym=True,
@@ -266,9 +269,9 @@ def train():
         features_extractor_kwargs=dict(features_dim=256)
     )
     
-    # Create environment with default rewards
+    # Create environment with rewards from eval.json
     vec_env = make_vec_env(
-        lambda: SnakeGameEnv(**game_params, reward_config=DEFAULT_REWARD_CONFIG.copy()),
+        lambda: SnakeGameEnv(**game_params, reward_config=reward_config.copy()),
         n_envs=N_ENVS,
         seed=42
     )
@@ -294,7 +297,11 @@ def train():
         log="all"
     )
     
-    reward_callback = RewardUpdateCallback(check_freq=LLM_CALL_FREQUENCY, use_llm=USE_LLM)
+    reward_callback = RewardUpdateCallback(
+        check_freq=LLM_CALL_FREQUENCY, 
+        use_llm=USE_LLM,
+        initial_rewards=reward_config
+    )
     callbacks = [wandb_callback, reward_callback]
     
     # Train

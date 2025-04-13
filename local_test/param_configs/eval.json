@@ -6,10 +6,13 @@
     "gs": 10,
     "perspective": "third",
     "rewards": {
-        "SnakeState.OK": 0,
-        "SnakeState.ATE": 1,
-        "SnakeState.DED": 0,
-        "SnakeState.WON": 0
+        "food_reward": 20.0,
+        "death_penalty": -10.0,
+        "step_penalty": -0.4,
+        "center_bonus": 0.0,
+        "loop_penalty": 0.0,
+        "wall_follow_penalty": 0.0,
+        "exploration_bonus": 0.0
     },
     "num_snakes": 1,
     "num_teams": 1

@@ -272,8 +272,7 @@ def train():
     # Create environment with rewards from eval.json
     vec_env = make_vec_env(
         lambda: SnakeGameEnv(**game_params, reward_config=reward_config.copy()),
-        n_envs=N_ENVS,
-        seed=42
+        n_envs=N_ENVS
     )
     
     # Create model

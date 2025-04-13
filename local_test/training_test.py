@@ -388,8 +388,8 @@ def train():
         device="cuda" if th.cuda.is_available() else "cpu",
         tensorboard_log=LOG_DIR,
         learning_rate=3e-4,
-        n_steps=128,
-        batch_size=2048
+        n_steps=512,
+        batch_size=8192
     )
     
     # Create callbacks

@@ -21,7 +21,7 @@ CONFIG_DIR = "param_configs"
 LOG_DIR = "logs_wandb"
 MODEL_DIR = "models_wandb"
 LLM_CALL_FREQUENCY = 30000  # Episodes before LLM update
-METRICS_LOG_FREQUENCY = 512
+METRICS_LOG_FREQUENCY = 1024
 N_ENVS = 128  # Number of environments
 USE_LLM = False  # SET THIS TO FALSE TO DISABLE LLM COMPLETELY
 

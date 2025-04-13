@@ -28,7 +28,7 @@ USE_LLM = True  # SET THIS TO FALSE TO DISABLE LLM COMPLETELY
 os.makedirs(LOG_DIR, exist_ok=True)
 os.makedirs(MODEL_DIR, exist_ok=True)
 
-def format_llm_prompt(metrics, current_config, history=None, max_history=10):
+def format_llm_prompt(metrics, current_config, history=None, max_history=20):
     if not metrics or metrics.get("episodes_collected", 0) == 0:
         return ""
     

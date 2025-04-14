@@ -5,7 +5,7 @@ import torch as th
 import wandb
 import requests
 # from stable_baselines3 import PPO # Keep commented or remove
-from sb3_contrib.sac import SAC # <-- Corrected import path
+from stable_baselines3 import TD3 # <-- Corrected import path
 from stable_baselines3.common.env_util import make_vec_env
 from stable_baselines3.common.callbacks import BaseCallback
 from wandb.integration.sb3 import WandbCallback
@@ -436,7 +436,7 @@ def train():
         project="snake-rl-simple",
         config={
             "policy_type": "CnnPolicy", # SAC also uses CnnPolicy for images
-            "algorithm": "SAC",        # <-- Log Algorithm
+            "algorithm": "TD3",        # <-- Log Algorithm
             "total_timesteps": 5_000_000,
             "n_envs": N_ENVS,
             # SAC Hyperparameters
@@ -470,15 +470,15 @@ def train():
         n_envs=N_ENVS
     )
     
-    # Create SAC model instead of PPO
-    model = SAC(
+    # Create TD3 model instead of SAC
+    model = TD3(
         "CnnPolicy",
         vec_env,
         policy_kwargs=policy_kwargs,
         verbose=1,
         device="cuda" if th.cuda.is_available() else "cpu",
         tensorboard_log=LOG_DIR,
-        # SAC specific hyperparameters
+        # TD3 specific hyperparameters
         learning_rate=SAC_LEARNING_RATE,
         buffer_size=SAC_BUFFER_SIZE,
         learning_starts=SAC_LEARNING_STARTS,
@@ -498,7 +498,7 @@ def train():
     
     # Create callbacks
     wandb_callback = WandbCallback(
-        gradient_save_freq=10_000, # Maybe less frequent for SAC?
+        gradient_save_freq=10_000, # Maybe less frequent for TD3?
         model_save_path=f"{MODEL_DIR}/{run.id}",
         model_save_freq=50_000,
         log="all"
@@ -514,13 +514,13 @@ def train():
     
     # Train
     try:
-        # Note: SAC uses `train_freq` and `gradient_steps` instead of `n_steps`
+        # Note: TD3 uses `train_freq` and `gradient_steps` instead of `n_steps`
         # to control update frequency relative to environment interaction.
         model.learn(
             total_timesteps=5_000_000,
             callback=callbacks,
             progress_bar=True,
-            tb_log_name=f"SAC_Snake_{run.id}" # <-- Updated log name
+            tb_log_name=f"TD3_Snake_{run.id}" # <-- Updated log name
         )
         model.save(f"{MODEL_DIR}/{run.id}/final_model")
     except KeyboardInterrupt:

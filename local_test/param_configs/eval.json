@@ -6,9 +6,9 @@
     "gs": 10,
     "perspective": "third",
     "rewards": {
-        "food_reward": 5,
+        "food_reward": 20,
         "death_penalty": -10,
-        "step_penalty": -0.1,
+        "step_penalty": -0.4,
         "center_bonus": 0.0,
         "loop_penalty": 0.0,
         "wall_follow_penalty": 0.0,

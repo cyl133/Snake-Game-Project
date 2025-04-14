@@ -441,10 +441,10 @@ def train():
         save_code=True
     )
     
-    # Create policy kwargs
     policy_kwargs = dict(
         features_extractor_class=CustomCNN,
-        features_extractor_kwargs=dict(features_dim=256)
+        features_extractor_kwargs=dict(features_dim=256),
+        net_arch=dict(pi=[128, 64], vf=[256, 256, 128])
     )
     
     # Create environment with rewards from eval.json

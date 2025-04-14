@@ -4,7 +4,7 @@ import numpy as np
 import torch as th
 import wandb
 import requests
-from stable_baselines3 import PPO
+from sb3_contrib import SAC
 from stable_baselines3.common.env_util import make_vec_env
 from stable_baselines3.common.callbacks import BaseCallback
 from wandb.integration.sb3 import WandbCallback
@@ -27,6 +27,15 @@ LLM_CALL_FREQUENCY = 50000  # Episodes before LLM update
 METRICS_LOG_FREQUENCY = 1024
 N_ENVS = 32  # Number of environments
 USE_LLM = False  # SET THIS TO FALSE TO DISABLE LLM COMPLETELY
+
+# SAC specific hyperparameters
+SAC_LEARNING_RATE = 3e-4 # Can keep the same or adjust (e.g., 1e-4)
+SAC_BUFFER_SIZE = 1_000_000 # Size of the replay buffer (adjust based on RAM)
+SAC_BATCH_SIZE = 256      # Batch size for sampling from buffer
+SAC_LEARNING_STARTS = 10000 # How many steps to collect before starting training
+SAC_GAMMA = 0.99          # Discount factor
+SAC_TAU = 0.005           # Soft update coefficient
+SAC_GRAD_STEPS = 1        # How many gradient steps per environment step (-1 means = env steps)
 
 os.makedirs(LOG_DIR, exist_ok=True)
 os.makedirs(MODEL_DIR, exist_ok=True)
@@ -421,16 +430,23 @@ def train():
     if not reward_config:
         raise ValueError("No reward configuration found in eval.json")
     
-    # Initialize wandb with LLM flag
+    # Initialize wandb with LLM flag and SAC parameters
     run = wandb.init(
-        project="snake-rl-simple", 
+        project="snake-rl-simple",
         config={
-            "policy_type": "CnnPolicy",
+            "policy_type": "CnnPolicy", # SAC also uses CnnPolicy for images
+            "algorithm": "SAC",        # <-- Log Algorithm
             "total_timesteps": 5_000_000,
             "n_envs": N_ENVS,
-            "learning_rate": 3e-4,
-            "n_steps": 128,
-            "batch_size": 2048,
+            # SAC Hyperparameters
+            "learning_rate": SAC_LEARNING_RATE,
+            "buffer_size": SAC_BUFFER_SIZE,
+            "batch_size": SAC_BATCH_SIZE,
+            "learning_starts": SAC_LEARNING_STARTS,
+            "gamma": SAC_GAMMA,
+            "tau": SAC_TAU,
+            "gradient_steps": SAC_GRAD_STEPS,
+            # Game/LLM Params
             "game_params": game_params,
             "initial_rewards": reward_config,
             "llm_freq": LLM_CALL_FREQUENCY,
@@ -453,22 +469,35 @@ def train():
         n_envs=N_ENVS
     )
     
-    # Create model
-    model = PPO(
+    # Create SAC model instead of PPO
+    model = SAC(
         "CnnPolicy",
         vec_env,
         policy_kwargs=policy_kwargs,
         verbose=1,
         device="cuda" if th.cuda.is_available() else "cpu",
         tensorboard_log=LOG_DIR,
-        learning_rate=3e-4,
-        n_steps=128,
-        batch_size=2048
+        # SAC specific hyperparameters
+        learning_rate=SAC_LEARNING_RATE,
+        buffer_size=SAC_BUFFER_SIZE,
+        learning_starts=SAC_LEARNING_STARTS,
+        batch_size=SAC_BATCH_SIZE,
+        tau=SAC_TAU,
+        gamma=SAC_GAMMA,
+        gradient_steps=SAC_GRAD_STEPS,
+        # train_freq=(1, "step"), # Default: train after each step
+        # action_noise=None, # Default for discrete action spaces
+        # optimize_memory_usage=False, # Can set True if RAM is tight
+        # ent_coef='auto', # Default: learn entropy coefficient automatically
+        # target_update_interval=1, # Default
+        # target_entropy='auto', # Default
+        # use_sde=False, # Default
+        # sde_sample_freq=-1 # Default
     )
     
     # Create callbacks
     wandb_callback = WandbCallback(
-        gradient_save_freq=10_000,
+        gradient_save_freq=10_000, # Maybe less frequent for SAC?
         model_save_path=f"{MODEL_DIR}/{run.id}",
         model_save_freq=50_000,
         log="all"
@@ -484,11 +513,13 @@ def train():
     
     # Train
     try:
+        # Note: SAC uses `train_freq` and `gradient_steps` instead of `n_steps`
+        # to control update frequency relative to environment interaction.
         model.learn(
             total_timesteps=5_000_000,
             callback=callbacks,
             progress_bar=True,
-            tb_log_name=f"PPO_Snake_{run.id}"
+            tb_log_name=f"SAC_Snake_{run.id}" # <-- Updated log name
         )
         model.save(f"{MODEL_DIR}/{run.id}/final_model")
     except KeyboardInterrupt:

@@ -552,7 +552,7 @@ def train():
     # --- Train ---
     try:
         # Determine total timesteps remaining if loading a model
-        total_timesteps_config = run.config.get("total_timesteps", 5_000_000)
+        total_timesteps_config = run.config.get("total_timesteps", 5_000_0000)
         timesteps_to_train = total_timesteps_config - model.num_timesteps
         if timesteps_to_train <= 0:
              print("Model already trained for total timesteps. Exiting.")

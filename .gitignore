@@ -1,6 +1,5 @@
 /jack_snake
 */__pycache__
-*.zip
 logs
 old_logs
 temp

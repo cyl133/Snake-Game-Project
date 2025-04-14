@@ -500,7 +500,7 @@ def train():
         "n_steps": 128,
         "batch_size": 2048,
         "gae_lambda": 0.99,
-        "ent_coef": 0.2
+        "ent_coef": 0.05
     }
 
     # --- Load or Create Model ---

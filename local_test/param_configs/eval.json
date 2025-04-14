@@ -6,16 +6,16 @@
     "gs": 10,
     "perspective": "third",
     "rewards": {
-        "food_reward": 20,
-        "death_penalty": -10,
-        "step_penalty": -0.4,
+        "food_reward": 35,
+        "death_penalty": -100,
+        "step_penalty": -0.3,
         "center_bonus": 0.0,
-        "loop_penalty": 0.0,
+        "loop_penalty": 0,
         "wall_follow_penalty": 0.0,
-        "exploration_bonus": 0.0,
-        "consecutive_food_bonus": 5,
+        "exploration_bonus": 0.1,
+        "consecutive_food_bonus": 9,
         "distance_reduction_reward": 0.1,
-        "wall_avoidance_bonus": 0
+        "wall_avoidance_bonus": 0.25
     },
     "num_snakes": 1,
     "num_teams": 1

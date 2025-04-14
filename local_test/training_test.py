@@ -6,6 +6,7 @@ import wandb
 import requests
 # from stable_baselines3 import PPO # Keep commented or remove
 from stable_baselines3 import TD3 # <-- Corrected import path
+from stable_baselines3 import DQN
 from stable_baselines3.common.env_util import make_vec_env
 from stable_baselines3.common.callbacks import BaseCallback
 from wandb.integration.sb3 import WandbCallback
@@ -470,30 +471,20 @@ def train():
         n_envs=N_ENVS
     )
     
-    # Create TD3 model instead of SAC
-    model = TD3(
+    # Create DQN model instead of TD3
+    model = DQN(
         "CnnPolicy",
         vec_env,
         policy_kwargs=policy_kwargs,
         verbose=1,
         device="cuda" if th.cuda.is_available() else "cpu",
         tensorboard_log=LOG_DIR,
-        # TD3 specific hyperparameters
         learning_rate=SAC_LEARNING_RATE,
         buffer_size=SAC_BUFFER_SIZE,
         learning_starts=SAC_LEARNING_STARTS,
         batch_size=SAC_BATCH_SIZE,
-        tau=SAC_TAU,
         gamma=SAC_GAMMA,
-        gradient_steps=SAC_GRAD_STEPS,
-        # train_freq=(1, "step"), # Default: train after each step
-        # action_noise=None, # Default for discrete action spaces
-        # optimize_memory_usage=False, # Can set True if RAM is tight
-        # ent_coef='auto', # Default: learn entropy coefficient automatically
-        # target_update_interval=1, # Default
-        # target_entropy='auto', # Default
-        # use_sde=False, # Default
-        # sde_sample_freq=-1 # Default
+        tau=SAC_TAU
     )
     
     # Create callbacks

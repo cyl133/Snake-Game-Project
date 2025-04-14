@@ -10,6 +10,9 @@ from stable_baselines3.common.callbacks import BaseCallback
 from wandb.integration.sb3 import WandbCallback
 from collections import defaultdict
 from typing import Dict, List, Optional
+import matplotlib.pyplot as plt
+import base64
+import io
 
 # Import custom components
 from feature_extractor import CustomCNN
@@ -20,7 +23,7 @@ from llm_reward_shaper import LLM_MODEL, LLM_API_URL, GOOGLE_API_KEY, get_reward
 CONFIG_DIR = "param_configs"
 LOG_DIR = "logs_wandb"
 MODEL_DIR = "models_wandb"
-LLM_CALL_FREQUENCY = 30000  # Episodes before LLM update
+LLM_CALL_FREQUENCY = 50000  # Episodes before LLM update
 METRICS_LOG_FREQUENCY = 1024
 N_ENVS = 128  # Number of environments
 USE_LLM = False  # SET THIS TO FALSE TO DISABLE LLM COMPLETELY
@@ -32,37 +35,8 @@ def format_llm_prompt(metrics, current_config, history=None, max_history=10):
     if not metrics or metrics.get("episodes_collected", 0) == 0:
         return ""
     
-    # Format history with specific changes and results
-    history_str = "**History (Recent Updates):**\n"
-    if history:
-        recent_history = history[-max_history:]
-        for i, entry in enumerate(recent_history):
-            old_r = entry["old_rewards"]
-            new_r = entry["new_rewards"]
-            hist_metrics = entry["metrics"]
-            
-            # Show what changed
-            changes = []
-            for key in new_r:
-                if key in old_r and old_r[key] != new_r[key]:
-                    changes.append(f"{key}: {old_r[key]:.2f} → {new_r[key]:.2f}")
-            
-            # Include a broader range of performance metrics from that time
-            prior_performance_summary = (
-                f"Avg Food: {hist_metrics.get('avg_food_per_episode', 0):.1f}, "
-                f"Avg Length: {hist_metrics.get('avg_episode_length', 0):.1f}, "
-                f"Success Rate: {hist_metrics.get('success_rate_pct', 0):.1f}%, "
-                f"Wall Deaths: {hist_metrics.get('death_wall_pct', 0):.1f}%, "
-                f"Self Deaths: {hist_metrics.get('death_self_pct', 0):.1f}%, "
-                f"Looping: {hist_metrics.get('looping_rate_pct', 0):.1f}%"
-            )
-
-            history_str += f"Update {i+1} (Step {entry.get('step', 'N/A')}):\n"
-            history_str += f"- Changes: {', '.join(changes)}\n"
-            history_str += f"- Prior Performance: {prior_performance_summary}\n"
-    
     metrics_str = f"""
-**Current Performance ({metrics['episodes_collected']} episodes):**
+**Current Performance ({metrics['episodes_collected']} episodes since last update):**
 - Average Episode Length: {metrics['avg_episode_length']:.2f} steps
 - Average Food Eaten: {metrics['avg_food_per_episode']:.2f}
 - Average Max Snake Length: {metrics['avg_max_snake_length']:.2f}
@@ -98,46 +72,18 @@ def format_llm_prompt(metrics, current_config, history=None, max_history=10):
 Positive values encourage behaviors, negative values discourage them.
 """
 
-    # Add RL principles and reward shaping guidance
-    reward_shaping_guide = """
-**Reward Shaping Principles:**
-
-1. **Balance & Scale:** Keep rewards proportional. Food reward should generally be 20-100x the step penalty.
-
-2. **Metric Analysis Guidelines:**
-   - Low food eaten + short episodes → Increase food_reward, add distance_reduction_reward
-   - High wall death % → Increase wall_avoidance_bonus, increase death_penalty
-   - High self-collision % → Add loop_penalty, increase exploration_bonus
-   - Low efficiency (high steps per food) → Adjust step_penalty, increase distance_reduction_reward
-   - Low map coverage → Increase exploration_bonus, decrease wall_follow_penalty
-
-3. **Common Patterns:**
-   - If avg_episode_length < 100: Agent dies too quickly; increase death_penalty, increase step_penalty
-   - If food_eaten < 1.0: Agent isn't finding food; increase food_reward
-   - If looping_rate > 30%: Agent is stuck in loops; add loop_penalty
-   - If death_wall_pct > 50%: Agent hits walls too often; add wall_avoidance_bonus
-
-4. **Avoid Common Mistakes:**
-   - Don't make step_penalty too harsh (-0.05 to -0.5 is reasonable)
-   - Don't make death_penalty too extreme (generally -5 to -30)
-   - If introducing a new reward component, start small (0.1-1.0)
-   - Ensure food_reward (10-50) is significantly higher than any penalty
-"""
 
     prompt = f"""
-You are an expert in reinforcement learning reward shaping. Your task is to optimize a reward function for a Snake game agent to maximize food collection and survival time.
+You are an expert in reinforcement learning reward shaping. Your task is to optimize a reward function for a Snake game agent based on its performance trends and current behavior in order to maximize food eaten and minimize death.
 
-**Recent History:**
-{history_str if history else "No history available."}
+**Metric Trends:**
+(Refer to the attached image for recent performance trends across reward updates.)
 
-**Current Metrics:**
+**Current Metrics (Since Last Update):**
 {metrics_str}
 
 **How Rewards Are Calculated:**
 {rewards_explanation}
-
-**Reward Shaping Principles:**
-{reward_shaping_guide}
 
 **Current Reward Function:**
 ```json
@@ -145,51 +91,91 @@ You are an expert in reinforcement learning reward shaping. Your task is to opti
 ```
 
 **Task:**
-Analyze the metrics and suggest precise reward adjustments. Focus on the RELATIVE PROPORTIONS between rewards rather than absolute values. Keep all rewards within the recommended ranges. Make incremental changes (±10-50% maximum per parameter) rather than drastic ones. Consider trade-offs between exploration and exploitation.
+Analyze the attached image trends, current metrics, and current rewards using the guidelines.
+Decide if reward adjustments are needed now to improve performance OR if the agent needs more time to train under the current rewards (e.g., if performance is still clearly improving or highly unstable).
 
-For each change you make, consider its effect relative to other rewards. For example, if you increase food_reward, consider whether to adjust step_penalty proportionally.
+- **If adjustments are needed:** Suggest precise, incremental (±10-50%), proportional reward changes based on the analysis. Keep rewards within recommended ranges.
+- **If no changes are needed now:** Indicate this by returning the *current* reward configuration unchanged.
 
-Provide ONLY the updated JSON configuration.
+Provide ONLY the JSON reward configuration (either updated or the current one).
 """
     return prompt.strip()
 
-def call_llm(prompt):
-    """Simple LLM call function that returns parsed JSON or None"""
+def call_llm(prompt_text, image_data=None):
+    """LLM call function supporting text and optional image input."""
     if not GOOGLE_API_KEY:
         print("API key not set. Skipping LLM call.")
         return None
-        
-    print("\n--- LLM PROMPT ---")
-    print(prompt)
-    
+
+    print("\n--- LLM PROMPT (Text) ---")
+    print(prompt_text)
+    if image_data:
+        print("--- LLM PROMPT (Image Attached) ---")
+
     headers = {"Content-Type": "application/json"}
-    data = {"contents": [{"parts": [{"text": prompt}]}]}
-    
+
+    # Construct parts list for the API payload
+    parts = [{"text": prompt_text}]
+    if image_data:
+        parts.append({
+            "inline_data": {
+                "mime_type": "image/png",
+                "data": image_data
+            }
+        })
+
+    data = {"contents": [{"parts": parts}]}
+
     try:
-        response = requests.post(LLM_API_URL, headers=headers, json=data, timeout=30)
+        # Increased timeout for potentially larger payload
+        response = requests.post(LLM_API_URL, headers=headers, json=data, timeout=90)
         response.raise_for_status()
         response_json = response.json()
-        
-        # Extract text from response
+
+        # Extract text response (assuming LLM still outputs JSON in text)
         if 'candidates' in response_json and response_json['candidates']:
-            text = response_json['candidates'][0]['content']['parts'][0]['text']
-            
-            # Extract JSON
-            json_start = text.find('{')
-            json_end = text.rfind('}') + 1
-            if json_start >= 0 and json_end > 0:
-                json_str = text[json_start:json_end]
-                return json.loads(json_str)
-    except Exception as e:
+            candidate_content = response_json['candidates'][0].get('content', {})
+            if 'parts' in candidate_content and candidate_content['parts']:
+                text = candidate_content['parts'][0].get('text', '')
+
+                # Extract JSON from the text response
+                json_start = text.find('{')
+                json_end = text.rfind('}') + 1
+                if json_start >= 0 and json_end > 0:
+                    json_str = text[json_start:json_end]
+                    try:
+                        return json.loads(json_str)
+                    except json.JSONDecodeError as e:
+                        print(f"LLM response was not valid JSON: {e}")
+                        print(f"Received text: {text}") # Log the invalid response
+                        return None
+                else:
+                     print(f"LLM response did not contain JSON: {text}")
+                     return None # No JSON found
+            else:
+                print("LLM response structure unexpected (no parts).")
+                return None
+        else:
+             print("LLM response structure unexpected (no candidates).")
+             return None
+
+    except requests.exceptions.Timeout:
+        print("Error calling LLM: Request timed out.")
+    except requests.exceptions.RequestException as e:
         print(f"Error calling LLM: {e}")
-    
+        if hasattr(e, 'response') and e.response is not None:
+             print(f"LLM Response Status Code: {e.response.status_code}")
+             print(f"LLM Response Text: {e.response.text}")
+    except Exception as e:
+        print(f"An unexpected error occurred during LLM call: {e}")
+
     return None
 
 class RewardUpdateCallback(BaseCallback):
     def __init__(self, check_freq=LLM_CALL_FREQUENCY, log_freq=100, verbose=1, use_llm=USE_LLM, initial_rewards=None):
         super().__init__(verbose)
         self.check_freq = check_freq
-        self.log_freq = log_freq  # More frequent logging
+        self.log_freq = log_freq
         self.episode_count = 0
         self.stats = []
         self.reward_history = []
@@ -198,6 +184,78 @@ class RewardUpdateCallback(BaseCallback):
         self.use_llm = use_llm
         print(f"RewardUpdateCallback initialized with LLM {'ENABLED' if use_llm else 'DISABLED'}")
         
+    def _plot_metrics_history(self, max_history_points=20):
+        """Generates and encodes a plot of key metrics from reward_history."""
+        if not self.reward_history:
+            print("No history to plot.")
+            return None
+
+        history_to_plot = self.reward_history[-max_history_points:]
+        if not history_to_plot:
+             print("Not enough history points to plot.")
+             return None
+
+        steps = [entry['step'] for entry in history_to_plot]
+
+        # Select key metrics to plot from the 'metrics' dict within each history entry
+        metrics_to_plot = {
+            'Avg Food': [entry['metrics'].get('avg_food_per_episode', 0) for entry in history_to_plot],
+            'Avg Length': [entry['metrics'].get('avg_episode_length', 0) for entry in history_to_plot],
+            'Success %': [entry['metrics'].get('success_rate_pct', 0) for entry in history_to_plot],
+            'Wall Death %': [entry['metrics'].get('death_wall_pct', 0) for entry in history_to_plot],
+            'Self Death %': [entry['metrics'].get('death_self_pct', 0) for entry in history_to_plot],
+            'Looping %': [entry['metrics'].get('looping_rate_pct', 0) for entry in history_to_plot],
+            'Efficiency (Steps/Food)': [entry['metrics'].get('efficiency_steps_per_food', float('inf')) for entry in history_to_plot],
+        }
+
+        # Filter out infinite efficiency values for plotting
+        efficiency = metrics_to_plot['Efficiency (Steps/Food)']
+        finite_efficiency_steps = [s for s, e in zip(steps, efficiency) if np.isfinite(e)]
+        finite_efficiency_values = [e for e in efficiency if np.isfinite(e)]
+
+        num_plots = len(metrics_to_plot)
+        if num_plots == 0:
+            return None
+
+        plt.figure(figsize=(10, 2.5 * num_plots)) # Adjusted figsize
+
+        plot_index = 1
+        for key, values in metrics_to_plot.items():
+            plt.subplot(num_plots, 1, plot_index)
+            if key == 'Efficiency (Steps/Food)':
+                 if finite_efficiency_values: # Only plot if there's finite data
+                      plt.plot(finite_efficiency_steps, finite_efficiency_values, marker='o', linestyle='-')
+                 else:
+                      # Optionally plot nothing or a placeholder if no finite values
+                      plt.text(0.5, 0.5, 'No Finite Efficiency Data', horizontalalignment='center', verticalalignment='center', transform=plt.gca().transAxes)
+            else:
+                plt.plot(steps, values, marker='o', linestyle='-')
+
+            plt.title(key)
+            plt.ylabel("Value")
+            if plot_index == num_plots:
+                plt.xlabel("Training Timestep")
+            else:
+                 plt.xticks([]) # Hide x-axis labels for upper plots
+            plt.grid(True)
+            plot_index += 1
+
+        plt.suptitle("Recent Metrics Evolution (at time of LLM updates)", y=1.0) # Adjusted title and y
+        plt.tight_layout(rect=[0, 0, 1, 0.98]) # Adjust layout slightly for suptitle
+
+        # Save plot to a bytes buffer
+        buf = io.BytesIO()
+        plt.savefig(buf, format='png', bbox_inches='tight')
+        plt.close() # Close the plot to free memory
+        buf.seek(0)
+
+        # Encode to base64
+        image_base64 = base64.b64encode(buf.read()).decode('utf-8')
+        buf.close()
+
+        print(f"Generated metrics plot image (base64 encoded) for LLM.")
+        return image_base64
+
     def _on_step(self):
         # Check for episode completions
         for i, done in enumerate(self.locals.get("dones", [])):
@@ -214,50 +272,66 @@ class RewardUpdateCallback(BaseCallback):
                 
                 # Full metrics collection and potential LLM call less frequently
                 if self.episode_count % self.check_freq == 0:
-                    print(f"\n--- Episode {self.episode_count}: Collecting Metrics ---")
-                    metrics = self._aggregate_metrics()
-                    
-                    # Log metrics to wandb
+                    print(f"\n--- Episode {self.episode_count}: Collecting Metrics & Calling LLM ---")
+                    # Aggregate metrics from the *current* collection period
+                    current_metrics = self._aggregate_metrics()
+                    if not current_metrics:
+                         print("No metrics collected since last update, skipping LLM call.")
+                         self.stats = [] # Reset anyway
+                         return True
+
+                    # Log current metrics to wandb
                     if wandb.run:
-                        wandb.log({f"metrics/{k}": v for k, v in metrics.items()}, 
+                        wandb.log({f"metrics/{k}": v for k, v in current_metrics.items()},
                                  step=self.num_timesteps)
-                    
+
                     # Only call LLM if enabled
                     if self.use_llm:
                         print("LLM reward updating is ENABLED. Requesting reward update...")
-                        prompt = format_llm_prompt(metrics, self.current_rewards, self.reward_history)
-                        new_rewards = call_llm(prompt)
-                        
+
+                        # Generate plot from *historical* data and encode it
+                        plot_base64 = self._plot_metrics_history() # Uses self.reward_history
+
+                        # Format text prompt using *current* metrics and config
+                        # Pass self.reward_history so format_llm_prompt can decide (even if unused)
+                        prompt_text = format_llm_prompt(current_metrics, self.current_rewards, self.reward_history)
+
+                        # Call LLM with text and image
+                        new_rewards = call_llm(prompt_text, image_data=plot_base64)
+
                         if new_rewards:
                             print(f"New rewards from LLM: {new_rewards}")
-                            
-                            # Save history
+
+                            # Save history: Use the CURRENT metrics collected just before this call
                             self.reward_history.append({
                                 "step": self.num_timesteps,
                                 "episode": self.episode_count,
-                                "metrics": metrics,
+                                "metrics": current_metrics, # Metrics leading to this update
                                 "old_rewards": self.current_rewards.copy(),
                                 "new_rewards": new_rewards
                             })
-                            
+
                             # Update current rewards
                             self.current_rewards.update(new_rewards)
-                            
+
                             # Log new rewards to wandb
                             if wandb.run:
                                 wandb.log({f"rewards/{k}": v for k, v in self.current_rewards.items()},
                                         step=self.num_timesteps)
-                                
+
                             # Update environment rewards
                             self._switch_environment()
-                    else:
+                        else:
+                            print(f"LLM call failed or returned None at step {self.num_timesteps}. Rewards not updated.")
+
+                    else: # if not self.use_llm:
                         print("LLM reward updating is DISABLED. Using fixed rewards.")
                         # Still log the fixed rewards for consistency
                         if wandb.run:
                             wandb.log({f"rewards/{k}": v for k, v in self.current_rewards.items()},
                                     step=self.num_timesteps)
                     
-                    # Reset stats collection
+                    # Reset stats collection *after* potential LLM call and history saving
                     self.stats = []
         
         return True

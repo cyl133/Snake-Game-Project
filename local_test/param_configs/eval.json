@@ -7,14 +7,14 @@
     "perspective": "third",
     "rewards": {
         "food_reward": 5,
-        "death_penalty": 0,
-        "step_penalty": 0,
+        "death_penalty": -10,
+        "step_penalty": -0.1,
         "center_bonus": 0.0,
         "loop_penalty": 0.0,
         "wall_follow_penalty": 0.0,
         "exploration_bonus": 0.0,
-        "consecutive_food_bonus": 2,
-        "distance_reduction_reward": 0,
+        "consecutive_food_bonus": 5,
+        "distance_reduction_reward": 0.1,
         "wall_avoidance_bonus": 0
     },
     "num_snakes": 1,

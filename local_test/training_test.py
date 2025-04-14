@@ -463,7 +463,8 @@ def train():
         tensorboard_log=LOG_DIR,
         learning_rate=3e-4,
         n_steps=128,
-        batch_size=2048
+        batch_size=2048,
+        ent_coef=0.05
     )
     
     # Create callbacks

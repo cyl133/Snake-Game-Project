@@ -4,7 +4,8 @@ import numpy as np
 import torch as th
 import wandb
 import requests
-from sb3_contrib import SAC
+# from stable_baselines3 import PPO # Keep commented or remove
+from sb3_contrib.sac import SAC # <-- Corrected import path
 from stable_baselines3.common.env_util import make_vec_env
 from stable_baselines3.common.callbacks import BaseCallback
 from wandb.integration.sb3 import WandbCallback

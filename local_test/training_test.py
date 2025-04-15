@@ -26,8 +26,8 @@ CONFIG_DIR = "param_configs"
 LOG_DIR = "logs_wandb"
 MODEL_DIR = "models_wandb" # Directory for saving models via WandbCallback
 MODEL_LOAD_DIR = "./models" # Directory to check for loading existing models
-LLM_CALL_FREQUENCY = 50000
-METRICS_LOG_FREQUENCY = 1024
+LLM_CALL_FREQUENCY = 500000
+METRICS_LOG_FREQUENCY = 2048
 N_ENVS = 32
 USE_LLM = True
 

@@ -449,7 +449,7 @@ def train():
         project="snake-rl-simple",
         config={
             "policy_type": "CnnPolicy",
-            "total_timesteps": 5_500_000,
+            "total_timesteps": 5_500_0000,
             "n_envs": N_ENVS,
             "learning_rate": 3e-4,
             "n_steps": 128,

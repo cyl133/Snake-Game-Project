@@ -60,20 +60,17 @@ def format_llm_prompt(metrics, current_config, history=None, max_history=10):
 """
 
     # Add detailed explanation of how rewards are calculated
-    rewards_explanation = """
-**How Rewards Are Calculated:**
-- `food_reward`: Added when the snake eats food
-- `death_penalty`: Applied when the snake dies (collides with wall or itself)
-- `step_penalty`: Small penalty applied on every step (encourages efficiency)
-- `center_bonus`: Bonus when snake visits the center area of the map
-- `loop_penalty`: Penalty when snake shows looping behavior (revisiting same path)
-- `wall_follow_penalty`: Penalty when snake stays near walls
-- `exploration_bonus`: Reward for visiting new cells (unexplored areas)
-- `consecutive_food_bonus`: Additional bonus for eating food in succession (multiplied by count)
-- `distance_reduction_reward`: Reward for moving closer to food
-- `wall_avoidance_bonus`: Reward for staying away from walls
+    rewards_explanation = f"""
+**How Rewards Are Calculated (Current Simplified Setup):**
+The environment currently calculates a base reward based *only* on the following components from the configuration below:
+- `food_reward`: Base reward when the snake eats food.
+- `death_penalty`: Base reward when the snake dies.
+- `step_penalty`: Base reward applied on every other step.
+- `won_reward`: Base reward if the snake wins (optional, defaults to food_reward).
 
-Positive values encourage behaviors, negative values discourage them.
+This base reward is then **divided by {SnakeGameEnv.reward_scaling_factor:.1f}** to get the final reward for the step.
+
+**Your Task:** Focus on suggesting changes primarily to `food_reward`, `death_penalty`, and `step_penalty` based on the metrics and trends to improve performance (eating food, surviving longer). Changes to other keys in the JSON below will be stored but *will not* affect the immediate reward calculation in the current environment setup.
 """
 
 

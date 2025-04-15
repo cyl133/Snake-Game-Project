@@ -2,11 +2,9 @@ import numpy as np
 import gymnasium as gym
 from snake_game import Env, SnakeState
 import cv2
-import itertools
 import pygame
-import time # Already imported for info['episode']['t']
+import time
 from collections import defaultdict
-from llm_reward_shaper import metrics_collector, get_reward_for_step
 
 # Epsiode length - Removed, now read from params
 # MAX_STEPS = 1000
@@ -34,8 +32,8 @@ from llm_reward_shaper import metrics_collector, get_reward_for_step
 class SnakeGameEnv(gym.Env):
     """
     Custom Environment for Snake Game using Gymnasium API.
-    Reward is calculated based on the dynamically updated global config.
-    Episode stats are returned in the info dict upon termination/truncation.
+    Reward calculation simplified to match Luke's structure (base + scaling).
+    Detailed episode stats are still collected for logging/callback.
     """
     metadata = {"render_modes": ["human", "rgb_array", "ansi"], "render_fps": 4}
 
@@ -65,11 +63,11 @@ class SnakeGameEnv(gym.Env):
         self.max_steps = max_steps
         self.num_snakes = num_snakes
         self.numteams = num_teams
-        self.scale = 1 # Scaling factor for rendering observations
+        self.scale = 1 # Keep scale=1 as decided before
         self.render_mode = render_mode
         self.gs = gs # Grid size
 
-        # Store reward configuration from either reward_config or rewards parameter
+        # Store the full reward configuration for potential use by callbacks/LLM
         if reward_config is not None:
             self.reward_config = reward_config
         elif rewards is not None:
@@ -77,7 +75,9 @@ class SnakeGameEnv(gym.Env):
         else:
             raise ValueError("No reward configuration provided")
 
-        # Initialize episode state trackers here
+        self.reward_scaling_factor = 100.0 # Keep scaling factor
+
+        # Initialize episode state trackers (keep for metrics)
         self._reset_episode_stats()
 
         # Define observation space (assuming CNN Policy for now)
@@ -104,7 +104,7 @@ class SnakeGameEnv(gym.Env):
         self.clock = None
 
     def _reset_episode_stats(self):
-        """Resets stats tracked within a single episode."""
+        """Resets stats tracked within a single episode (for logging/callback)."""
         self.food_eaten_this_episode = 0
         self.current_episode_length = 0
         self.unique_cells_visited = set()
@@ -112,8 +112,7 @@ class SnakeGameEnv(gym.Env):
         self.actions_this_episode = []
         self.center_visits_this_episode = 0
         self.turns_this_episode = 0
-        self.consecutive_food = 0
-        self.prev_food_distance = None
+        self.consecutive_food = 0 # Reset this although not used for reward now
         self.looping_detected = False
 
     def _get_obs(self):
@@ -139,18 +138,15 @@ class SnakeGameEnv(gym.Env):
         return img_obs
 
     def _get_info(self):
-        # Base info, additional stats added on termination
-        info = {
-            # Add any step-level info if needed, otherwise empty
-        }
-        return info
+        # Return empty dict for intermediate steps
+        return {}
 
     def reset(self, seed=None, options=None):
         super().reset(seed=seed)
         self.env.reset()
         self._reset_episode_stats() # Reset internal episode stats
 
-        # Add starting position to history
+        # Add starting position to history (for metrics)
         head_pos = self.env.snakes[0].head if self.env.snakes else None
         if head_pos:
              pos_tuple = (head_pos.x, head_pos.y)
@@ -209,7 +205,7 @@ class SnakeGameEnv(gym.Env):
         
         # Track snake position for metrics
         head_pos = self.env.snakes[0].head if self.env.snakes else None
-        is_looping = False
+        is_looping_flag = False
         is_in_center_flag = False
         near_wall_flag = False
         unique_cell_flag = False
@@ -228,26 +224,37 @@ class SnakeGameEnv(gym.Env):
                 self.center_visits_this_episode += 1
                 is_in_center_flag = True
 
-            is_looping = self.detect_looping()
+            is_looping_flag = self.detect_looping()
             near_wall_flag = self.is_near_wall(head_pos)
 
         # Check if food was eaten in this step
         if snake_condition == SnakeState.ATE:
             self.food_eaten_this_episode += 1
+            self.consecutive_food += 1 # Track for potential metrics
+        else:
+            self.consecutive_food = 0 # Reset if not used
 
         # Determine termination conditions
         terminated = snake_condition in [SnakeState.DED, SnakeState.WON]
         truncated = self.env.time_steps >= self.max_steps
 
         # Calculate reward using the local config
-        reward = get_reward_for_step(
-            self.reward_config,
-            snake_condition,
-            is_looping=is_looping,
-            in_center=is_in_center_flag,
-            near_wall=near_wall_flag,
-            unique_cell=unique_cell_flag
-        )
+        food_rew = self.reward_config.get("food_reward", 20.0)
+        death_pen = self.reward_config.get("death_penalty", -10.0)
+        step_pen = self.reward_config.get("step_penalty", -0.4)
+        won_rew = self.reward_config.get("won_reward", food_rew) # Example: Add won_reward to config
+
+        if snake_condition == SnakeState.ATE:
+            base_reward = food_rew
+        elif snake_condition == SnakeState.DED:
+            base_reward = death_pen
+        elif snake_condition == SnakeState.WON:
+             base_reward = won_rew
+        else: # SnakeState.OK
+            base_reward = step_pen
+
+        # Apply scaling factor
+        reward = base_reward / self.reward_scaling_factor
         
         # Track distance to food for potential distance-based rewards
         if 'distance_reduction_reward' in self.reward_config and self.reward_config['distance_reduction_reward'] > 0:
@@ -305,7 +312,7 @@ class SnakeGameEnv(gym.Env):
                 "map_coverage": len(self.unique_cells_visited) / (self.gs * self.gs),
                 "center_visits": self.center_visits_this_episode,
                 "turns": self.turns_this_episode,
-                "looping": is_looping,
+                "looping": is_looping_flag,
                 "action_entropy": action_entropy
             }
             info["episode"] = {

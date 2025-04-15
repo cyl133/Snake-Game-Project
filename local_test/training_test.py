@@ -29,7 +29,7 @@ MODEL_LOAD_DIR = "./models" # Directory to check for loading existing models
 LLM_CALL_FREQUENCY = 50000
 METRICS_LOG_FREQUENCY = 1024
 N_ENVS = 32
-USE_LLM = False
+USE_LLM = True
 
 os.makedirs(LOG_DIR, exist_ok=True)
 os.makedirs(MODEL_DIR, exist_ok=True)

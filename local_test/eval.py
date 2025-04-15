@@ -3,6 +3,8 @@ from gym_env import SnakeGameEnv
 from stable_baselines3 import PPO
 import torch
 import json
+import time
+import numpy as np # Import numpy for mean/std calculation later
 from stable_baselines3.common.monitor import Monitor
 from feature_extractor import CustomCNN
 
@@ -40,37 +42,106 @@ with open("param_configs/eval.json", "r") as f:
         game_params['reward_config'] = reward_config
 
 # Load the trained model
-model = PPO.load("/Users/chengyueli/Snake-Game-Project-1/models/model.zip")
+# Make sure this path points to the correct model you want to evaluate
+model_path = "/Users/chengyueli/Snake-Game-Project-1/local_test/models/model.zip"
+print(f"Loading model from: {model_path}")
+model = PPO.load(model_path)
 
-# Create a new environment instance for evaluation with the reward_config
-env = Monitor(SnakeGameEnv(**game_params))
+# --- IMPORTANT: Create env with render_mode='human' ---
+# Remove reward_config from game_params if it exists to avoid TypeError
+if "reward_config" in game_params:
+    # We pass reward_config explicitly, so remove it from game_params to avoid duplication
+    extracted_reward_config = game_params.pop("reward_config")
+else:
+    # Handle case where reward_config might not be in game_params (e.g., older format)
+    # This assumes reward_config was created above if 'rewards' key existed.
+    if 'reward_config' not in locals():
+         raise ValueError("Could not find reward configuration in game_params")
+    extracted_reward_config = reward_config # Use the one created from 'rewards'
 
-# Evaluate the model
-rew, std = evaluate_policy(model, env, n_eval_episodes=10, render=True, return_episode_rewards=False, warn=True, deterministic=False)
+# Also remove 'rewards' key if it exists
+if "rewards" in game_params:
+    del game_params["rewards"]
 
+# Create a new environment instance for evaluation with the reward_config and render_mode
+print("Creating environment with render_mode='human'")
+env = Monitor(SnakeGameEnv(**game_params, reward_config=extracted_reward_config, render_mode='human'))
 
-# For getting the explicit actions probabilities, could be good for data and reporting
-# num_episodes = 50
-# all_action_probs = []
-
-# for _ in range(num_episodes):
-#     obs, _ = env.reset()
-#     done = False
-
-#     while not done:
-#         with torch.no_grad():
-#             tensor_obs, _ = model.policy.obs_to_tensor(obs)
-#             action_dist = model.policy.get_distribution(tensor_obs)
-#             action_probs = torch.exp(action_dist.distribution.logits)[0].tolist()
-#             all_action_probs.append(action_probs)
-
-#         paired_probs = [(action_map[i], round(prob, ndigits=3)) for i, prob in enumerate(action_probs)]
-#         print(f"Action Dist: {paired_probs}")
-#         env.render()
-#         action, _ = model.predict(obs, deterministic=False)
-#         print(f"Action: {action_map[int(action)]}")
-#         obs, reward, done,_, _ = env.step(int(action))
+# --- Comment out evaluate_policy as we use the manual loop ---
+# print("Skipping evaluate_policy, using manual loop for rendering.")
+# rew, std = evaluate_policy(model, env, n_eval_episodes=10, render=False, return_episode_rewards=False, warn=True, deterministic=False)
 
 
+# --- Manual Evaluation Loop with Rendering ---
+num_episodes = 10 # Adjust as needed
+all_action_probs = []
+episode_rewards = []
+episode_lengths = []
 
-print(f"Mean Reward: {rew:.2f}, Std Reward: {std:.2f}")
+print(f"\n--- Starting Manual Evaluation Loop ({num_episodes} episodes) ---")
+
+for episode in range(num_episodes):
+    obs, info = env.reset() # Get initial observation and info
+    done = False
+    terminated = False
+    truncated = False
+    current_reward = 0
+    current_length = 0
+    print(f"\n--- Episode {episode + 1}/{num_episodes} ---")
+
+    while not done:
+        # Render the current state *before* taking the action
+        env.render()
+
+        with torch.no_grad():
+            tensor_obs, _ = model.policy.obs_to_tensor(obs)
+            action_dist = model.policy.get_distribution(tensor_obs)
+            # Use .probs for distribution probabilities
+            probs = action_dist.distribution.probs.cpu().numpy()[0]
+            all_action_probs.append(probs.tolist())
+
+        paired_probs = [(action_map[i], round(prob, ndigits=3)) for i, prob in enumerate(probs)]
+        print(f"Step: {current_length}, Action Dist: {paired_probs}")
+
+        action, _ = model.predict(obs, deterministic=False) # Use deterministic=False for eval
+        print(f"Action Selected: {action_map[int(action)]}")
+
+        obs, reward, terminated, truncated, info = env.step(int(action)) # Get Gymnasium outputs
+        done = terminated or truncated # Check termination conditions
+
+        current_reward += reward
+        current_length += 1
+
+    # Render the final state after loop ends
+    print(f"Episode {episode + 1} finished. Final State:")
+    env.render()
+    # Retrieve final stats from Monitor wrapper's info dict
+    ep_info = info.get("episode")
+    if ep_info:
+        print(f"  Monitor Reward: {ep_info['r']:.2f}, Monitor Length: {ep_info['l']}")
+        episode_rewards.append(ep_info['r'])
+        episode_lengths.append(ep_info['l'])
+    else:
+        # Fallback if Monitor info isn't available for some reason
+        print(f"  Manual Reward: {current_reward:.2f}, Manual Length: {current_length}")
+        episode_rewards.append(current_reward)
+        episode_lengths.append(current_length)
+
+    time.sleep(0.5)  # Pause a bit longer at the end of an episode
+
+env.close() # Close the environment window
+
+# Calculate and print mean/std after the loop
+if episode_rewards:
+    mean_reward_manual = np.mean(episode_rewards)
+    std_reward_manual = np.std(episode_rewards)
+    mean_length_manual = np.mean(episode_lengths)
+    std_length_manual = np.std(episode_lengths)
+    print("\n--- Evaluation Summary (Manual Loop) ---")
+    print(f"Ran {len(episode_rewards)} episodes.")
+    print(f"Mean Reward: {mean_reward_manual:.2f} +/- {std_reward_manual:.2f}")
+    print(f"Mean Length: {mean_length_manual:.2f} +/- {std_length_manual:.2f}")
+else:
+    print("\n--- No episodes completed for summary ---")
+
+# print(f"Original evaluate_policy: Mean Reward: {rew:.2f}, Std Reward: {std:.2f}") # Print if you uncomment evaluate_policy

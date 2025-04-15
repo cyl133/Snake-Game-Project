@@ -460,8 +460,16 @@ def train():
         net_arch=dict(pi=[128, 64], vf=[256, 256, 128])
     )
 
+    # --- IMPORTANT: Remove reward_config from game_params before unpacking ---
+    if "reward_config" in game_params:
+        del game_params["reward_config"]
+    # Also remove the old 'rewards' key if it might exist and conflict
+    if "rewards" in game_params:
+        del game_params["rewards"]
+
     # Create environment (needed for both loading and creating)
     vec_env = make_vec_env(
+        # Now **game_params won't contain 'reward_config'
         lambda: SnakeGameEnv(**game_params, reward_config=reward_config.copy()),
         n_envs=N_ENVS
     )

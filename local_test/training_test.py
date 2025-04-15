@@ -68,7 +68,7 @@ The environment currently calculates a base reward based *only* on the following
 - `step_penalty`: Base reward applied on every other step.
 - `won_reward`: Base reward if the snake wins (optional, defaults to food_reward).
 
-This base reward is then **divided by {SnakeGameEnv.reward_scaling_factor:.1f}** to get the final reward for the step.
+This base reward is then **divided by 100.0** to get the final reward for the step.
 
 **Your Task:** Focus on suggesting changes primarily to `food_reward`, `death_penalty`, and `step_penalty` based on the metrics and trends to improve performance (eating food, surviving longer). Changes to other keys in the JSON below will be stored but *will not* affect the immediate reward calculation in the current environment setup.
 """
@@ -413,6 +413,20 @@ class RewardUpdateCallback(BaseCallback):
 
 
 def train():
+    # +++ ADD MINIMAL TEST +++
+    print("--- Running Minimal API Test ---")
+    test_url = f"https://generativelanguage.googleapis.com/v1beta/models/{LLM_MODEL}:generateContent?key={GOOGLE_API_KEY}"
+    test_headers = {"Content-Type": "application/json"}
+    test_data = {"contents": [{"parts": [{"text": "Minimal test prompt"}]}]}
+    try:
+        test_response = requests.post(test_url, headers=test_headers, json=test_data, timeout=30)
+        print(f"Minimal API Test Response Status: {test_response.status_code}")
+        # print(f"Minimal API Test Response Body: {test_response.text}") # Optional: print body
+    except Exception as e:
+        print(f"Minimal API Test FAILED: {e}")
+    print("--- Minimal API Test Complete ---")
+    # +++ END MINIMAL TEST +++
+
     # Load game parameters
     with open(f"{CONFIG_DIR}/eval.json", "r") as f:
         game_params = json.load(f)

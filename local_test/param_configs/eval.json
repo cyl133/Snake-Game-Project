@@ -9,7 +9,7 @@
     "num_teams": 1,
     "reward_config": {
         "food_reward": 50.0,
-        "death_penalty": -100.0,
+        "death_penalty": -20.0,
         "step_penalty": -5,
         "won_reward": 20.0,
         "center_bonus": 0.0,
